@@ -1,13 +1,10 @@
 mod app;
 mod device;
 mod interrupt;
-mod net;
 mod protocol;
 
 use std::io::Error;
 use std::sync::mpsc;
-use std::thread;
-use std::time::Duration;
 
 use signal_hook::consts::signal::*;
 use signal_hook::consts::TERM_SIGNALS;
@@ -23,30 +20,30 @@ fn main() -> Result<(), Error> {
     let mut signals = SignalsInfo::<WithOrigin>::new(&sigs)?;
 
     let (sender, receiver) = mpsc::channel();
-    let setup = ProtoStackSetup::new();
-    let app_join = setup.run(receiver);
+
+    let proto_stack = ProtoStackSetup::new();
+    let app_join = proto_stack.run(receiver);
 
     for info in &mut signals {
         eprintln!("Received a signal {:?}", info);
         match info.signal {
             SIGHUP => {}
             SIGUSR1 => {
-                net::handle_soft_irq();
+                proto_stack.handle_protocol();
             }
-            device::IRQ_LOOPBACK => {
-                eprint!("yahoo");
-            }
-            term_sig => {
-                eprintln!("Terminating");
-                assert!(TERM_SIGNALS.contains(&term_sig));
-                break;
+            sig => {
+                if TERM_SIGNALS.contains(&sig) {
+                    eprintln!("Terminating");
+                    break;
+                }
+                proto_stack.handle_irq(sig);
             }
         }
     }
     // Stop app thread
     println!("Closing app thread.");
     sender.send(()).unwrap();
-    app_join.join();
+    app_join.join().unwrap();
     println!("App thread closed.");
     Ok(())
 }

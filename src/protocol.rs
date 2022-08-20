@@ -1,27 +1,59 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, sync::Arc};
 
-enum ProtocolType {
-    IP,
+#[derive(PartialEq)]
+pub enum ProtocolType {
+    // ARP = 0x0806,
+    // ICMP,
+    IP = 0x0800,
+    // IPV6 = 0x86dd,
+    // TCP,
+    // UDP,
+}
+
+pub struct ProtocolData {
+    data: Option<Arc<Box<[u8]>>>,
+}
+
+impl ProtocolData {
+    pub fn new(data: Option<Arc<Box<[u8]>>>) -> ProtocolData {
+        ProtocolData { data }
+    }
 }
 
 pub struct NetProtocol {
-    protocol_type: ProtocolType,
-    input_head: VecDeque<u32>,
-    handle: fn(),
+    pub protocol_type: ProtocolType,
+    pub input_head: VecDeque<ProtocolData>,
+    pub next_protocol: Option<Box<NetProtocol>>,
 }
 
 impl NetProtocol {
-    fn new(t: ProtocolType, handle: fn()) -> NetProtocol {
+    pub fn new(t: ProtocolType) -> NetProtocol {
         NetProtocol {
             protocol_type: t,
             input_head: VecDeque::new(),
-            handle,
+            next_protocol: None,
         }
     }
-    fn input(&self, data: u8, len: usize) {
+
+    /// Calls input handler for all data till a queue is empty.
+    pub fn handle_input(&mut self) {
+        loop {
+            if self.input_head.is_empty() {
+                break;
+            }
+            let data = self.input_head.pop_front().unwrap();
+            self.input(data)
+        }
+    }
+
+    /// Handles input data per a protocol type.
+    pub fn input(&self, data: ProtocolData) {
+        let data_rc = data.data.unwrap();
+        let data = data_rc.as_ref().as_ref();
+        // let parsed = u32::from_be_bytes(data.as_ref());
         match self.protocol_type {
             ProtocolType::IP => {
-                println!("data: {} length: {}", data, len);
+                println!("Protocol: IP | Received: {:?}", data);
             }
         }
     }

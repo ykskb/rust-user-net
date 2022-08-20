@@ -1,5 +1,10 @@
-use crate::interrupt;
-use signal_hook::low_level::raise;
+use std::{rc::Rc, sync::Arc};
+
+use crate::{
+    interrupt,
+    protocol::{NetProtocol, ProtocolData, ProtocolType},
+};
+use signal_hook::{consts::SIGUSR1, low_level::raise};
 
 const DEVICE_FLAG_UP: u16 = 0x0001;
 const DEVICE_FLAG_LOOPBACK: u16 = 0x0010;
@@ -23,7 +28,7 @@ pub struct NetDevice {
     flags: u16,
     header_len: u16,
     address_len: u16,
-    irq_entry: interrupt::IRQEntry,
+    pub irq_entry: interrupt::IRQEntry,
     pub next_device: Option<Box<NetDevice>>,
 }
 
@@ -54,9 +59,11 @@ impl NetDevice {
             },
         }
     }
+
     fn is_open(&self) -> bool {
         self.flags & DEVICE_FLAG_UP > 0
     }
+
     pub fn open(&mut self) -> Result<(), &str> {
         match self.device_type {
             NetDeviceType::Loopback => {
@@ -69,6 +76,7 @@ impl NetDevice {
             }
         }
     }
+
     pub fn open_all(&mut self) -> Result<(), &str> {
         self.open();
         let mut head = &mut self.next_device;
@@ -80,27 +88,55 @@ impl NetDevice {
         }
         Ok(())
     }
+
     pub fn close(&self) -> Result<(), &str> {
         match self.device_type {
             NetDeviceType::Loopback => Ok(()),
             NetDeviceType::Ethernet => Ok(()),
         }
     }
-    pub fn transmit(&self, tr_type: u16, data: &str, len: usize) -> Result<(), ()> {
+
+    /// Sends data to a device.
+    pub fn transmit(
+        &mut self,
+        tr_type: ProtocolType,
+        data: Box<[u8]>,
+        len: usize,
+    ) -> Result<(), ()> {
         if !self.is_open() {
             panic!("Device is not open.")
         }
         match self.device_type {
             NetDeviceType::Loopback => {
-                println!("NIL TYPE DEVICE: data transmitted: {}\n", data);
-                println!("Raising 36\n");
+                println!("Transmitting data through loopback device...\n");
+                self.irq_entry.custom_data = Some(Arc::new(data));
                 raise(IRQ_LOOPBACK).unwrap();
                 Ok(())
             }
             NetDeviceType::Ethernet => Ok(()),
         }
     }
-    pub fn isr(&self, irq: u8, device: &NetDevice) {}
+
+    /// Interrupt service routine for registered IRQs. Handles inputs and raises SIGUSR1.
+    pub fn isr(&self, _irq: i32, protocols: Option<&mut Box<NetProtocol>>) {
+        match self.device_type {
+            NetDeviceType::Loopback => {
+                let mut head = protocols;
+                while head.is_some() {
+                    println!("Loopback device pushing data into protocol queue.\n");
+                    let protocol = head.unwrap();
+                    if protocol.protocol_type == ProtocolType::IP {
+                        let custom_data_arc = self.irq_entry.custom_data.clone();
+                        let data_entry: ProtocolData = ProtocolData::new(custom_data_arc);
+                        protocol.input_head.push_back(data_entry);
+                    }
+                    head = protocol.next_protocol.as_mut();
+                }
+            }
+            NetDeviceType::Ethernet => (),
+        }
+        raise(SIGUSR1).unwrap();
+    }
 }
 
 // fn add_device(device: NetDevice, new_device: NetDevice) {

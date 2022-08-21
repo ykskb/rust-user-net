@@ -4,6 +4,7 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use crate::device::{self, NetDevice};
+use crate::net::IPInterface;
 use crate::protocol::NetProtocol;
 use crate::protocol::ProtocolType;
 
@@ -16,6 +17,9 @@ impl ProtoStackSetup {
     pub fn new() -> ProtoStackSetup {
         let mut lo_device = device::init_loopback();
         lo_device.open().unwrap();
+        let ip_interface = IPInterface::new("127.0.0.1", "255.255.255.0");
+        lo_device.register_interface(ip_interface);
+
         let ip_proto = NetProtocol::new(ProtocolType::IP);
         ProtoStackSetup {
             devices: Arc::new(Mutex::new(Some(Box::new(lo_device)))),
@@ -41,7 +45,7 @@ impl ProtoStackSetup {
             device.transmit(ProtocolType::IP, data, 4).unwrap();
             drop(device_mutex);
 
-            thread::sleep(Duration::from_millis(3000));
+            thread::sleep(Duration::from_millis(2000));
         })
     }
 

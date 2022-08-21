@@ -15,16 +15,18 @@ use signal_hook::iterator::SignalsInfo;
 use crate::app::ProtoStackSetup;
 
 fn main() -> Result<(), Error> {
-    // Interrupt thread
+    // Signal setup
     let mut sigs = vec![SIGHUP, SIGUSR1, device::IRQ_LOOPBACK];
     sigs.extend(TERM_SIGNALS);
     let mut signals = SignalsInfo::<WithOrigin>::new(&sigs)?;
 
     let (sender, receiver) = mpsc::channel();
 
+    // Protocol stack start
     let proto_stack = ProtoStackSetup::new();
     let app_join = proto_stack.run(receiver);
 
+    // Interrupt thread
     for info in &mut signals {
         eprintln!("Received a signal {:?}", info);
         match info.signal {
@@ -41,7 +43,7 @@ fn main() -> Result<(), Error> {
             }
         }
     }
-    // Stop app thread
+    // App thread termination
     println!("Closing app thread.");
     sender.send(()).unwrap();
     app_join.join().unwrap();

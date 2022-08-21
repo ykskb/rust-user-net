@@ -30,17 +30,12 @@ pub struct NetDevice {
     header_len: u16,
     address_len: u16,
     pub irq_entry: interrupt::IRQEntry,
-    pub interface: IPInterface,
+    pub interface: Option<Box<IPInterface>>,
     pub next_device: Option<Box<NetDevice>>,
 }
 
 impl NetDevice {
-    pub fn new(
-        device_type: NetDeviceType,
-        i: u8,
-        irq_entry: interrupt::IRQEntry,
-        interface: IPInterface,
-    ) -> NetDevice {
+    pub fn new(device_type: NetDeviceType, i: u8, irq_entry: interrupt::IRQEntry) -> NetDevice {
         match device_type {
             NetDeviceType::Loopback => NetDevice {
                 index: i,
@@ -51,7 +46,7 @@ impl NetDevice {
                 header_len: 0,
                 address_len: 0,
                 irq_entry,
-                interface,
+                interface: None,
                 next_device: None,
             },
             NetDeviceType::Ethernet => NetDevice {
@@ -63,9 +58,26 @@ impl NetDevice {
                 header_len: 0,
                 address_len: 0,
                 irq_entry,
-                interface,
+                interface: None,
                 next_device: None,
             },
+        }
+    }
+
+    pub fn register_interface(&mut self, interface: IPInterface) {
+        println!(
+            "Registering {:?} interface on device: {}\n",
+            interface.interface.family, self.name
+        );
+        let interface = Box::new(interface);
+        if self.interface.is_none() {
+            self.interface = Some(interface);
+        } else {
+            let mut head = self.interface.as_mut().unwrap();
+            while head.next.is_some() {
+                head = head.next.as_mut().unwrap();
+            }
+            head.next = Some(interface);
         }
     }
 
@@ -158,8 +170,6 @@ impl NetDevice {
 
 pub fn init_loopback() -> NetDevice {
     let loopback_irq = interrupt::IRQEntry::new(IRQ_LOOPBACK, IRQ_FLAG_SHARED);
-    let interface = IPInterface::new("127.0.0.1", "255.0.0.0");
-    let loopback_device: NetDevice =
-        NetDevice::new(NetDeviceType::Loopback, 0, loopback_irq, interface);
+    let loopback_device: NetDevice = NetDevice::new(NetDeviceType::Loopback, 0, loopback_irq);
     loopback_device
 }

@@ -1,13 +1,14 @@
 use std::char;
 
 #[derive(Debug)]
-enum NetInterfaceFamily {
+pub enum NetInterfaceFamily {
     IP,
     IPV6,
 }
+
 #[derive(Debug)]
 pub struct NetInterface {
-    family: NetInterfaceFamily,
+    pub family: NetInterfaceFamily,
     next: Option<Box<NetInterface>>,
 }
 
@@ -15,8 +16,8 @@ pub type IPAdress = u32;
 
 #[derive(Debug)]
 pub struct IPInterface {
-    interface: NetInterface,
-    next: Option<Box<IPInterface>>,
+    pub interface: NetInterface,
+    pub next: Option<Box<IPInterface>>,
     unicast: IPAdress,
     netmask: IPAdress,
     broadcast: IPAdress,
@@ -50,12 +51,17 @@ impl IPInterface {
             family: NetInterfaceFamily::IP,
             next: None,
         };
+        let unicast = ip_addr_to_bytes(unicast).unwrap();
+        let netmask = ip_addr_to_bytes(netmask).unwrap();
+        // unicast & netmask = nw address => nw address | !nestmask (all hosts) = broadcast
+        let broadcast = (unicast & netmask) | !netmask;
+
         IPInterface {
             interface,
             next: None,
-            unicast: 3,
-            netmask: 3,
-            broadcast: 33,
+            unicast,
+            netmask,
+            broadcast,
         }
     }
 }

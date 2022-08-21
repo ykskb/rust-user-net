@@ -1,6 +1,7 @@
 mod app;
 mod device;
 mod interrupt;
+mod net;
 mod protocol;
 
 use std::io::Error;

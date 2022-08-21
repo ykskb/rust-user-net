@@ -1,5 +1,7 @@
 use std::{collections::VecDeque, sync::Arc};
 
+use crate::net::IPAdress;
+
 #[derive(PartialEq)]
 pub enum ProtocolType {
     // ARP = 0x0806,
@@ -11,11 +13,11 @@ pub enum ProtocolType {
 }
 
 pub struct ProtocolData {
-    data: Option<Arc<Box<[u8]>>>,
+    data: Option<Arc<[u8]>>, // accessed from input/output threads for loopback
 }
 
 impl ProtocolData {
-    pub fn new(data: Option<Arc<Box<[u8]>>>) -> ProtocolData {
+    pub fn new(data: Option<Arc<[u8]>>) -> ProtocolData {
         ProtocolData { data }
     }
 }
@@ -49,7 +51,7 @@ impl NetProtocol {
     /// Handles input data per a protocol type.
     pub fn input(&self, data: ProtocolData) {
         let data_rc = data.data.unwrap();
-        let data = data_rc.as_ref().as_ref();
+        let data = data_rc.as_ref();
         // let parsed = u32::from_be_bytes(data.as_ref());
         match self.protocol_type {
             ProtocolType::IP => {
@@ -57,4 +59,19 @@ impl NetProtocol {
             }
         }
     }
+}
+
+#[repr(packed)]
+pub struct IPHeader {
+    ver_len: u8,      // version (4 bits) + IHL (4 bits)
+    service_type: u8, // | Precedence: 3 | Delay: 1 | Throughput: 1 | Reliability: 1 | Reserved: 2 |
+    total_len: u16,
+    id: u16,
+    offset: u16, // flags: | 0 | Don't fragment: 1 | More fragment: 1 | + fragment offset (13 bits)
+    ttl: u8,
+    protocol: u8,
+    check_sum: u16,
+    src: IPAdress,
+    dst: IPAdress,
+    opts: [u8],
 }

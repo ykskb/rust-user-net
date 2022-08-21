@@ -2,6 +2,7 @@ use std::{rc::Rc, sync::Arc};
 
 use crate::{
     interrupt,
+    net::{IPInterface, NetInterface},
     protocol::{NetProtocol, ProtocolData, ProtocolType},
 };
 use signal_hook::{consts::SIGUSR1, low_level::raise};
@@ -29,11 +30,17 @@ pub struct NetDevice {
     header_len: u16,
     address_len: u16,
     pub irq_entry: interrupt::IRQEntry,
+    pub interface: IPInterface,
     pub next_device: Option<Box<NetDevice>>,
 }
 
 impl NetDevice {
-    pub fn new(device_type: NetDeviceType, i: u8, irq_entry: interrupt::IRQEntry) -> NetDevice {
+    pub fn new(
+        device_type: NetDeviceType,
+        i: u8,
+        irq_entry: interrupt::IRQEntry,
+        interface: IPInterface,
+    ) -> NetDevice {
         match device_type {
             NetDeviceType::Loopback => NetDevice {
                 index: i,
@@ -44,6 +51,7 @@ impl NetDevice {
                 header_len: 0,
                 address_len: 0,
                 irq_entry,
+                interface,
                 next_device: None,
             },
             NetDeviceType::Ethernet => NetDevice {
@@ -55,6 +63,7 @@ impl NetDevice {
                 header_len: 0,
                 address_len: 0,
                 irq_entry,
+                interface,
                 next_device: None,
             },
         }
@@ -100,7 +109,7 @@ impl NetDevice {
     pub fn transmit(
         &mut self,
         tr_type: ProtocolType,
-        data: Box<[u8]>,
+        data: Arc<[u8]>,
         len: usize,
     ) -> Result<(), ()> {
         if !self.is_open() {
@@ -109,7 +118,7 @@ impl NetDevice {
         match self.device_type {
             NetDeviceType::Loopback => {
                 println!("Transmitting data through loopback device...\n");
-                self.irq_entry.custom_data = Some(Arc::new(data));
+                self.irq_entry.custom_data = Some(data);
                 raise(IRQ_LOOPBACK).unwrap();
                 Ok(())
             }
@@ -149,6 +158,8 @@ impl NetDevice {
 
 pub fn init_loopback() -> NetDevice {
     let loopback_irq = interrupt::IRQEntry::new(IRQ_LOOPBACK, IRQ_FLAG_SHARED);
-    let loopback_device: NetDevice = NetDevice::new(NetDeviceType::Loopback, 0, loopback_irq);
+    let interface = IPInterface::new("127.0.0.1", "255.0.0.0");
+    let loopback_device: NetDevice =
+        NetDevice::new(NetDeviceType::Loopback, 0, loopback_irq, interface);
     loopback_device
 }

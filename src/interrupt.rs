@@ -7,7 +7,7 @@ pub struct IRQEntry {
     pub irq: i32,
     flags: u8,
     next: Option<Box<IRQEntry>>,
-    pub custom_data: Option<Arc<Box<[u8]>>>,
+    pub custom_data: Option<Arc<[u8]>>,
 }
 
 impl<'a> IRQEntry {

@@ -16,8 +16,8 @@ pub struct ProtoStackSetup {
 impl ProtoStackSetup {
     pub fn new() -> ProtoStackSetup {
         let mut lo_device = device::init_loopback();
-        lo_device.open().unwrap();
         let ip_interface = IPInterface::new("127.0.0.1", "255.255.255.0");
+        lo_device.open().unwrap();
         lo_device.register_interface(ip_interface);
 
         let ip_proto = NetProtocol::new(ProtocolType::IP);
@@ -30,7 +30,7 @@ impl ProtoStackSetup {
     pub fn run(&self, receiver: mpsc::Receiver<()>) -> JoinHandle<()> {
         let device = Arc::clone(&self.devices);
         thread::spawn(move || loop {
-            // Check termination
+            // Termination check
             match receiver.try_recv() {
                 Ok(_) | Err(TryRecvError::Disconnected) => {
                     println!("App thread Terminating.");

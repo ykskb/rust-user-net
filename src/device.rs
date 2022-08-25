@@ -138,7 +138,7 @@ impl NetDevice {
         }
     }
 
-    /// Interrupt service routine for registered IRQs. Handles inputs and raises SIGUSR1.
+    /// ISR (interrupt service routine) for registered IRQs. Handles inputs and raises SIGUSR1.
     pub fn isr(&self, _irq: i32, protocols: Option<&mut Box<NetProtocol>>) {
         match self.device_type {
             NetDeviceType::Loopback => {

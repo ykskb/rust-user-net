@@ -4,6 +4,7 @@ use crate::{
     interrupt,
     net::{IPInterface, NetInterface},
     protocol::{NetProtocol, ProtocolData, ProtocolType},
+    tap::open_tap,
 };
 use signal_hook::{consts::SIGUSR1, low_level::raise};
 
@@ -24,11 +25,12 @@ pub enum NetDeviceType {
 pub struct NetDevice {
     index: u8,
     device_type: NetDeviceType,
-    name: String,
+    pub name: String,
     mtu: u16,
     flags: u16,
     header_len: u16,
     address_len: u16,
+    pub address: [u8; 14],
     pub irq_entry: interrupt::IRQEntry,
     pub interface: Option<Box<IPInterface>>,
     pub next_device: Option<Box<NetDevice>>,
@@ -45,6 +47,7 @@ impl NetDevice {
                 flags: DEVICE_FLAG_LOOPBACK,
                 header_len: 0,
                 address_len: 0,
+                address: [0; 14],
                 irq_entry,
                 interface: None,
                 next_device: None,
@@ -57,6 +60,7 @@ impl NetDevice {
                 flags: 0,
                 header_len: 0,
                 address_len: 0,
+                address: [0; 14],
                 irq_entry,
                 interface: None,
                 next_device: None,
@@ -93,6 +97,7 @@ impl NetDevice {
             }
             NetDeviceType::Ethernet => {
                 self.flags |= DEVICE_FLAG_UP;
+                open_tap(self);
                 Ok(())
             }
         }

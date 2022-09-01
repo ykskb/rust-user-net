@@ -61,11 +61,16 @@ pub fn icmp_input(
     src: IPAdress,
     mut dst: IPAdress,
     iface: IPInterface,
-) {
+) -> Result<(), ()> {
     let icmp_hdr_size = size_of::<ICMPHeader>();
     let hdr = unsafe { bytes_to_struct::<ICMPHeader>(data.as_ref()) };
-    let icmp_data = data[(icmp_hdr_size - 1)..].to_vec();
+    let hlen = size_of::<ICMPHeader>();
+    if cksum16(&hdr, hlen, 0) != 0 {
+        return Err(());
+    }
+
     if hdr.icmp_type == ICMP_TYPE_ECHO {
+        let icmp_data = data[(icmp_hdr_size - 1)..].to_vec();
         if dst != iface.unicast {
             dst = iface.unicast;
         }
@@ -77,8 +82,9 @@ pub fn icmp_input(
             len - icmp_hdr_size,
             src,
             dst,
-        )
+        );
     }
+    Ok(())
 }
 
 pub fn icmp_output(

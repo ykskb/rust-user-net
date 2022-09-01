@@ -5,6 +5,7 @@ mod interrupt;
 mod ip;
 mod net;
 mod protocol;
+mod tap;
 mod util;
 
 use std::io::Error;

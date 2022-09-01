@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 signal-hook = { version = "0.3.14", features = ["extended-siginfo"] }
+nix = "0.25.0"
+ifstructs = "0.1.1"

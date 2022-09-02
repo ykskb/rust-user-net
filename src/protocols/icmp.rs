@@ -1,10 +1,9 @@
-use std::{mem::size_of, sync::Arc};
-
+use super::ip::ip_output;
 use crate::{
-    ip::ip_output,
     net::{IPAdress, IPInterface},
     util::{bytes_to_struct, cksum16, to_u8_slice},
 };
+use std::{mem::size_of, sync::Arc};
 
 const ICMP_TYPE_ECHOREPLY: u8 = 0;
 const ICMP_TYPE_DEST_UNREACH: u8 = 3;
@@ -108,5 +107,5 @@ pub fn icmp_output(
     let header_bytes = unsafe { to_u8_slice(&hdr) }; // add icmp data here
     let mut data = header_bytes.to_vec();
     data.append(&mut icmp_data);
-    ip_output(crate::ip::IPProtocolType::ICMP, data, src, dst);
+    ip_output(super::ip::IPProtocolType::ICMP, data, src, dst);
 }

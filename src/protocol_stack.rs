@@ -1,12 +1,12 @@
+use crate::devices::loopback;
+use crate::devices::NetDevice;
+use crate::net::IPInterface;
+use crate::protocols::NetProtocol;
+use crate::protocols::ProtocolType;
 use std::sync::mpsc::TryRecvError;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
-
-use crate::device::{self, NetDevice};
-use crate::net::IPInterface;
-use crate::protocol::NetProtocol;
-use crate::protocol::ProtocolType;
 
 pub struct ProtoStackSetup {
     devices: Arc<Mutex<Option<Box<NetDevice>>>>,
@@ -15,7 +15,7 @@ pub struct ProtoStackSetup {
 
 impl ProtoStackSetup {
     pub fn new() -> ProtoStackSetup {
-        let mut lo_device = device::init_loopback();
+        let mut lo_device = loopback::init(0);
         let ip_interface = IPInterface::new("127.0.0.1", "255.255.255.0");
         lo_device.open().unwrap();
         lo_device.register_interface(ip_interface);

@@ -1,6 +1,7 @@
-use std::{collections::VecDeque, sync::Arc};
+pub mod icmp;
+pub mod ip;
 
-use crate::net::IPAdress;
+use std::{collections::VecDeque, sync::Arc};
 
 #[derive(PartialEq)]
 pub enum ProtocolType {

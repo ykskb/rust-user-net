@@ -1,4 +1,4 @@
-use std::char;
+pub type IPAdress = u32;
 
 #[derive(Debug)]
 pub enum NetInterfaceFamily {
@@ -11,8 +11,6 @@ pub struct NetInterface {
     pub family: NetInterfaceFamily,
     next: Option<Box<NetInterface>>,
 }
-
-pub type IPAdress = u32;
 
 #[derive(Debug)]
 pub struct IPInterface {

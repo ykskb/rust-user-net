@@ -1,11 +1,10 @@
-use std::{
-    mem::{size_of, size_of_val},
-    sync::{Arc, Mutex},
-};
-
 use crate::{
     net::IPAdress,
     util::{cksum16, to_u8_slice, u16_to_le},
+};
+use std::{
+    mem::{size_of, size_of_val},
+    sync::Mutex,
 };
 
 const IP_VERSION_4: u8 = 4;

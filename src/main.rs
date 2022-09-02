@@ -1,26 +1,23 @@
-mod app;
-mod device;
-mod icmp;
+mod protocol_stack;
+mod devices;
+mod drivers;
 mod interrupt;
-mod ip;
 mod net;
-mod protocol;
-mod tap;
+mod protocols;
 mod util;
 
-use std::io::Error;
-use std::sync::mpsc;
-
+use crate::protocol_stack::ProtoStackSetup;
+use crate::devices::loopback::IRQ_LOOPBACK;
 use signal_hook::consts::signal::*;
 use signal_hook::consts::TERM_SIGNALS;
 use signal_hook::iterator::exfiltrator::origin::WithOrigin;
 use signal_hook::iterator::SignalsInfo;
-
-use crate::app::ProtoStackSetup;
+use std::io::Error;
+use std::sync::mpsc;
 
 fn main() -> Result<(), Error> {
     // Signal setup
-    let mut sigs = vec![SIGHUP, SIGUSR1, device::IRQ_LOOPBACK];
+    let mut sigs = vec![SIGHUP, SIGUSR1, IRQ_LOOPBACK];
     sigs.extend(TERM_SIGNALS);
     let mut signals = SignalsInfo::<WithOrigin>::new(&sigs)?;
 

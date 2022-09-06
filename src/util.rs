@@ -1,3 +1,4 @@
+/// u16 to little endian.
 pub fn u16_to_le(v: u16) -> u16 {
     if cfg!(target_endian = "big") {
         return v;
@@ -5,6 +6,7 @@ pub fn u16_to_le(v: u16) -> u16 {
     (v & 0x00ff) << 8 | (v & 0xff00) >> 8
 }
 
+/// u32 to little endian.
 pub fn u32_to_le(v: u32) -> u32 {
     if cfg!(target_endian = "big") {
         return v;

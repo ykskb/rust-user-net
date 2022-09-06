@@ -2,9 +2,10 @@ pub mod ethernet;
 pub mod loopback;
 
 use crate::{
+    drivers::{DriverData, DriverType},
     interrupt,
     net::IPInterface,
-    protocols::{NetProtocol, ProtocolType},
+    protocols::{NetProtocol, ProtocolData, ProtocolType},
 };
 use signal_hook::{consts::SIGUSR1, low_level::raise};
 use std::sync::Arc;
@@ -32,6 +33,8 @@ pub struct NetDevice {
     pub irq_entry: interrupt::IRQEntry,
     pub interface: Option<Box<IPInterface>>,
     pub next_device: Option<Box<NetDevice>>,
+    pub driver_type: Option<DriverType>,
+    pub driver_data: Option<DriverData>,
 }
 
 impl NetDevice {
@@ -55,6 +58,8 @@ impl NetDevice {
             irq_entry,
             interface: None,
             next_device: None,
+            driver_type: None,
+            driver_data: None,
         }
     }
 
@@ -110,7 +115,7 @@ impl NetDevice {
     pub fn transmit(
         &mut self,
         tr_type: ProtocolType,
-        data: Arc<[u8]>,
+        data: Arc<Vec<u8>>,
         len: usize,
     ) -> Result<(), ()> {
         if !self.is_open() {
@@ -124,14 +129,27 @@ impl NetDevice {
 
     /// ISR (interrupt service routine) for registered IRQs. Handles inputs and raises SIGUSR1.
     pub fn isr(&self, _irq: i32, protocols: Option<&mut Box<NetProtocol>>) {
-        match self.device_type {
-            NetDeviceType::Loopback => {
-                loopback::isr(self, protocols);
-            }
-            NetDeviceType::Ethernet => {
-                ethernet::isr(self, protocols);
-            }
+        let incoming_data = match self.device_type {
+            NetDeviceType::Loopback => loopback::read_data(self),
+            NetDeviceType::Ethernet => ethernet::read_data(self),
+        };
+
+        if incoming_data.is_none() {
+            return;
         }
+
+        let (proto_type, data) = incoming_data.unwrap();
+        let mut head = protocols;
+        while head.is_some() {
+            let protocol = head.unwrap();
+            if protocol.protocol_type == proto_type {
+                let data_entry: ProtocolData = ProtocolData::new(Some(Arc::new(data)));
+                protocol.input_head.push_back(data_entry);
+                break;
+            }
+            head = protocol.next_protocol.as_mut();
+        }
+
         raise(SIGUSR1).unwrap();
     }
 }

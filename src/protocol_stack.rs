@@ -41,7 +41,7 @@ impl ProtoStackSetup {
 
             let mut device_mutex = device.lock().unwrap();
             let device = device_mutex.as_mut().unwrap();
-            let data = Arc::new([3, 4, 5, 6]);
+            let data = Arc::new(vec![3, 4, 5, 6]);
             device.transmit(ProtocolType::IP, data, 4).unwrap();
             drop(device_mutex);
 

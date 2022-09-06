@@ -11,14 +11,24 @@ pub enum ProtocolType {
     // IPV6 = 0x86dd,
     // TCP,
     // UDP,
+    Unknown,
+}
+
+impl ProtocolType {
+    pub fn from_u16(value: u16) -> ProtocolType {
+        match value {
+            0x0800 => ProtocolType::IP,
+            _ => ProtocolType::Unknown,
+        }
+    }
 }
 
 pub struct ProtocolData {
-    data: Option<Arc<[u8]>>, // accessed from input/output threads for loopback
+    data: Option<Arc<Vec<u8>>>, // accessed from input/output threads for loopback
 }
 
 impl ProtocolData {
-    pub fn new(data: Option<Arc<[u8]>>) -> ProtocolData {
+    pub fn new(data: Option<Arc<Vec<u8>>>) -> ProtocolData {
         ProtocolData { data }
     }
 }
@@ -57,6 +67,9 @@ impl NetProtocol {
         match self.protocol_type {
             ProtocolType::IP => {
                 println!("Protocol: IP | Received: {:?}", data);
+            }
+            ProtocolType::Unknown => {
+                println!("Protocol: Unknown | Received: {:?}", data);
             }
         }
     }

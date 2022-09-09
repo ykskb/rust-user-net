@@ -14,7 +14,7 @@ use nix::{
     libc::{c_int, fcntl, F_SETFL, F_SETOWN, IFF_NO_PI, IFF_TAP, O_ASYNC, SIOCGIFHWADDR},
     poll::{self, PollFd, PollFlags},
     sys::socket::{socket, AddressFamily, SockFlag, SockType},
-    unistd::read,
+    unistd::{read, write},
 };
 use std::{fs::File, mem::size_of, os::unix::prelude::AsRawFd, process};
 
@@ -128,4 +128,10 @@ pub fn read_data(device: &NetDevice) -> Option<(ProtocolType, Vec<u8>)> {
         return Some((ProtocolType::from_u16(eth_type), data));
     }
     None
+}
+
+pub fn write_data(device: &NetDevice, data: &[u8]) -> Result<(), ()> {
+    let fd = device.driver_data.as_ref().unwrap().fd;
+    write(fd, data).unwrap();
+    Ok(())
 }

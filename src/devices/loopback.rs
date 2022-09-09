@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 pub const IRQ_LOOPBACK: i32 = interrupt::INTR_IRQ_BASE + 5;
 const DEVICE_FLAG_LOOPBACK: u16 = 0x0010;
-const LOOPBACK_MTU: u16 = u16::MAX;
+const LOOPBACK_MTU: usize = u16::MAX as usize;
 
 pub fn open(_device: &mut NetDevice) -> Result<(), ()> {
     Ok(())

@@ -10,6 +10,8 @@ use crate::{
 use signal_hook::{consts::SIGUSR1, low_level::raise};
 use std::sync::Arc;
 
+use self::ethernet::ETH_ADDR_LEN;
+
 const DEVICE_FLAG_UP: u16 = 0x0001;
 
 pub const IRQ_FLAG_SHARED: u8 = 0x0001;
@@ -25,7 +27,7 @@ pub struct NetDevice {
     index: u8,
     device_type: NetDeviceType,
     pub name: String,
-    mtu: u16,
+    mtu: usize,
     flags: u16,
     header_len: u16,
     address_len: u16,
@@ -41,7 +43,7 @@ impl NetDevice {
     pub fn new(
         device_type: NetDeviceType,
         name: String,
-        mtu: u16,
+        mtu: usize,
         flags: u16,
         i: u8,
         irq_entry: interrupt::IRQEntry,
@@ -114,16 +116,17 @@ impl NetDevice {
     /// Sends data to a device.
     pub fn transmit(
         &mut self,
-        tr_type: ProtocolType,
+        proto_type: ProtocolType,
         data: Arc<Vec<u8>>,
         len: usize,
+        dst: [u8; ETH_ADDR_LEN],
     ) -> Result<(), ()> {
         if !self.is_open() {
             panic!("Device is not open.")
         }
         match self.device_type {
             NetDeviceType::Loopback => loopback::transmit(self, data),
-            NetDeviceType::Ethernet => ethernet::transmit(self, data),
+            NetDeviceType::Ethernet => ethernet::transmit(self, proto_type, data, len, dst),
         }
     }
 

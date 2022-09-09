@@ -8,7 +8,7 @@ pub enum DriverType {
 
 #[derive(Debug)]
 pub struct DriverData {
-    fd: i32,
+    pub fd: i32,
     irq: i32,
 }
 

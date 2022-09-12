@@ -21,6 +21,7 @@ impl ProtoStackSetup {
         lo_device.register_interface(ip_interface);
 
         let ip_proto = NetProtocol::new(ProtocolType::IP);
+
         ProtoStackSetup {
             devices: Arc::new(Mutex::new(Some(Box::new(lo_device)))),
             protocols: Arc::new(Mutex::new(Some(Box::new(ip_proto)))),

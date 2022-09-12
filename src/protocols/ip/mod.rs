@@ -1,5 +1,7 @@
+pub mod icmp;
+
 use crate::{
-    net::IPAdress,
+    net::{IPAdress, NetInterface},
     util::{cksum16, to_u8_slice, u16_to_le},
 };
 use std::{
@@ -7,14 +9,38 @@ use std::{
     sync::Mutex,
 };
 
-const IP_VERSION_4: u8 = 4;
-
 // see https://www.iana.org/assignments/protocol-numbers/protocol-numbers.txt
 pub enum IPProtocolType {
     ICMP = 0x01,
     TCP = 0x06,
     UDP = 0x11,
 }
+
+pub struct IPProtocol {
+    name: [char; 16],
+    ip_type: IPProtocolType,
+    next: Option<Box<IPProtocol>>,
+    handler: fn(),
+}
+
+pub struct IPRoute {
+    network: IPAdress,
+    netmask: IPAdress,
+    next_hop: IPAdress,
+    interface: IPInterface,
+    next: Option<Box<IPRoute>>,
+}
+
+#[derive(Debug)]
+pub struct IPInterface {
+    pub interface: NetInterface,
+    pub next: Option<Box<IPInterface>>,
+    pub unicast: IPAdress,
+    pub netmask: IPAdress,
+    pub broadcast: IPAdress,
+}
+
+const IP_VERSION_4: u8 = 4;
 
 #[repr(packed)]
 pub struct IPHeader {

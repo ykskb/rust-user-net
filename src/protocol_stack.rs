@@ -54,6 +54,7 @@ impl ProtoStackSetup {
     pub fn handle_irq(&self, irq: i32) {
         let device_mutex = self.devices.lock().unwrap();
         let mut head = device_mutex.as_ref();
+
         while head.is_some() {
             let device = head.unwrap();
             println!("device irq: {} called irq: {}", device.irq_entry.irq, irq);
@@ -68,13 +69,16 @@ impl ProtoStackSetup {
 
     /// Triggers data queue check for all protocols.
     pub fn handle_protocol(&self) {
+        let device_mutex = self.devices.lock().unwrap();
+        let devices = device_mutex.as_deref();
+
         let mut protocol_mutex = self.protocols.lock().unwrap();
         let protocols = protocol_mutex.as_mut();
 
         let mut head = protocols;
         while head.is_some() {
             let protocol = head.unwrap();
-            protocol.handle_input();
+            protocol.handle_input(devices);
             head = protocol.next_protocol.as_mut();
         }
     }

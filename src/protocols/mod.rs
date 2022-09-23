@@ -3,9 +3,11 @@ pub mod ip;
 
 use std::{collections::VecDeque, sync::Arc};
 
+use crate::devices::NetDevice;
+
 #[derive(PartialEq)]
 pub enum ProtocolType {
-    // ARP = 0x0806,
+    Arp = 0x0806,
     // ICMP,
     IP = 0x0800,
     // IPV6 = 0x86dd,
@@ -18,6 +20,7 @@ impl ProtocolType {
     pub fn from_u16(value: u16) -> ProtocolType {
         match value {
             0x0800 => ProtocolType::IP,
+            0x0806 => ProtocolType::Arp,
             _ => ProtocolType::Unknown,
         }
     }
@@ -25,11 +28,12 @@ impl ProtocolType {
 
 pub struct ProtocolData {
     data: Option<Arc<Vec<u8>>>, // accessed from input/output threads for loopback
+    irq: i32,
 }
 
 impl ProtocolData {
-    pub fn new(data: Option<Arc<Vec<u8>>>) -> ProtocolData {
-        ProtocolData { data }
+    pub fn new(data: Option<Arc<Vec<u8>>>, irq: i32) -> ProtocolData {
+        ProtocolData { data, irq }
     }
 }
 
@@ -49,24 +53,36 @@ impl NetProtocol {
     }
 
     /// Calls input handler for all data till a queue is empty.
-    pub fn handle_input(&mut self) {
+    pub fn handle_input(&mut self, devices: Option<&NetDevice>) {
         loop {
             if self.input_head.is_empty() {
                 break;
             }
             let data = self.input_head.pop_front().unwrap();
-            self.input(data)
+            let mut head = devices;
+            while head.is_some() {
+                let device = head.unwrap();
+                if device.irq_entry.irq == data.irq {
+                    self.input(data, device);
+                    break;
+                }
+                head = device.next_device.as_deref();
+            }
         }
     }
 
     /// Handles input data per a protocol type.
-    pub fn input(&self, data: ProtocolData) {
+    pub fn input(&self, data: ProtocolData, device: &NetDevice) {
         let data_rc = data.data.unwrap();
         let data = data_rc.as_ref();
-        // let parsed = u32::from_be_bytes(data.as_ref());
+        // let parsed = u32::from_be_bytes(data.as_slice());
         match self.protocol_type {
             ProtocolType::IP => {
                 println!("Protocol: IP | Received: {:?}", data);
+            }
+            ProtocolType::Arp => {
+                println!("Protocol: ARP | Received: {:?}", data);
+                arp::input(data, device);
             }
             ProtocolType::Unknown => {
                 println!("Protocol: Unknown | Received: {:?}", data);

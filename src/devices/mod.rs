@@ -6,6 +6,7 @@ use crate::{
     interrupt,
     net::IPInterface,
     protocols::{NetProtocol, ProtocolData, ProtocolType},
+    util::List,
 };
 use signal_hook::{consts::SIGUSR1, low_level::raise};
 use std::sync::Arc;
@@ -131,7 +132,7 @@ impl NetDevice {
     }
 
     /// ISR (interrupt service routine) for registered IRQs. Handles inputs and raises SIGUSR1.
-    pub fn isr(&self, irq: i32, protocols: Option<&mut Box<NetProtocol>>) {
+    pub fn isr(&self, irq: i32, protocols: &mut List<NetProtocol>) {
         let incoming_data = match self.device_type {
             NetDeviceType::Loopback => loopback::read_data(self),
             NetDeviceType::Ethernet => ethernet::read_data(self),
@@ -142,15 +143,12 @@ impl NetDevice {
         }
 
         let (proto_type, data) = incoming_data.unwrap();
-        let mut head = protocols;
-        while head.is_some() {
-            let protocol = head.unwrap();
+        for protocol in protocols.iter_mut() {
             if protocol.protocol_type == proto_type {
                 let data_entry: ProtocolData = ProtocolData::new(Some(Arc::new(data)), irq);
                 protocol.input_head.push_back(data_entry);
                 break;
             }
-            head = protocol.next_protocol.as_mut();
         }
 
         raise(SIGUSR1).unwrap();

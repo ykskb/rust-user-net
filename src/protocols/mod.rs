@@ -3,7 +3,7 @@ pub mod ip;
 
 use std::{collections::VecDeque, sync::Arc};
 
-use crate::devices::NetDevice;
+use crate::{devices::NetDevice, util::List};
 
 #[derive(PartialEq)]
 pub enum ProtocolType {
@@ -53,20 +53,17 @@ impl NetProtocol {
     }
 
     /// Calls input handler for all data till a queue is empty.
-    pub fn handle_input(&mut self, devices: Option<&NetDevice>) {
+    pub fn handle_input(&mut self, devices: &List<NetDevice>) {
         loop {
             if self.input_head.is_empty() {
                 break;
             }
             let data = self.input_head.pop_front().unwrap();
-            let mut head = devices;
-            while head.is_some() {
-                let device = head.unwrap();
+            for device in devices.iter() {
                 if device.irq_entry.irq == data.irq {
                     self.input(data, device);
                     break;
                 }
-                head = device.next_device.as_deref();
             }
         }
     }

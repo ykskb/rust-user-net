@@ -3,14 +3,15 @@ use crate::devices::NetDevice;
 use crate::net::IPInterface;
 use crate::protocols::NetProtocol;
 use crate::protocols::ProtocolType;
+use crate::util::List;
 use std::sync::mpsc::TryRecvError;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 pub struct ProtoStackSetup {
-    devices: Arc<Mutex<Option<Box<NetDevice>>>>,
-    protocols: Arc<Mutex<Option<Box<NetProtocol>>>>,
+    devices: Arc<Mutex<List<NetDevice>>>,
+    protocols: Arc<Mutex<List<NetProtocol>>>,
 }
 
 impl ProtoStackSetup {
@@ -19,12 +20,16 @@ impl ProtoStackSetup {
         let ip_interface = IPInterface::new("127.0.0.1", "255.255.255.0");
         lo_device.open().unwrap();
         lo_device.register_interface(ip_interface);
+        let mut devices = List::<NetDevice>::new();
+        devices.push(lo_device);
 
         let ip_proto = NetProtocol::new(ProtocolType::IP);
+        let mut protocols = List::<NetProtocol>::new();
+        protocols.push(ip_proto);
 
         ProtoStackSetup {
-            devices: Arc::new(Mutex::new(Some(Box::new(lo_device)))),
-            protocols: Arc::new(Mutex::new(Some(Box::new(ip_proto)))),
+            devices: Arc::new(Mutex::new(devices)),
+            protocols: Arc::new(Mutex::new(protocols)),
         }
     }
 
@@ -41,7 +46,7 @@ impl ProtoStackSetup {
             }
 
             let mut device_mutex = device.lock().unwrap();
-            let device = device_mutex.as_mut().unwrap();
+            let device = device_mutex.iter_mut().next().unwrap();
             let data = Arc::new(vec![3, 4, 5, 6]);
             device.transmit(ProtocolType::IP, data, 4, [0; 6]).unwrap();
             drop(device_mutex);
@@ -53,33 +58,22 @@ impl ProtoStackSetup {
     /// Calls ISR handler of a device with a matching IRQ, passing protocols.
     pub fn handle_irq(&self, irq: i32) {
         let device_mutex = self.devices.lock().unwrap();
-        let mut head = device_mutex.as_ref();
 
-        while head.is_some() {
-            let device = head.unwrap();
-            println!("device irq: {} called irq: {}", device.irq_entry.irq, irq);
+        for device in device_mutex.iter() {
             if device.irq_entry.irq == irq {
                 let mut protocol_mutex = self.protocols.lock().unwrap();
-                let protocols = protocol_mutex.as_mut();
-                device.isr(irq, protocols);
+                device.isr(irq, &mut protocol_mutex);
             }
-            head = device.next_device.as_ref();
         }
     }
 
     /// Triggers data queue check for all protocols.
     pub fn handle_protocol(&self) {
-        let device_mutex = self.devices.lock().unwrap();
-        let devices = device_mutex.as_deref();
+        let devices = self.devices.lock().unwrap();
+        let mut protocols = self.protocols.lock().unwrap();
 
-        let mut protocol_mutex = self.protocols.lock().unwrap();
-        let protocols = protocol_mutex.as_mut();
-
-        let mut head = protocols;
-        while head.is_some() {
-            let protocol = head.unwrap();
-            protocol.handle_input(devices);
-            head = protocol.next_protocol.as_mut();
+        for protocol in protocols.iter_mut() {
+            protocol.handle_input(&devices);
         }
     }
 }

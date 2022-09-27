@@ -5,6 +5,7 @@ use crate::protocols::arp::ArpTable;
 use crate::protocols::NetProtocol;
 use crate::protocols::ProtocolType;
 use crate::util::List;
+use std::rc::Rc;
 use std::sync::mpsc::TryRecvError;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -19,9 +20,11 @@ pub struct ProtoStackSetup {
 impl ProtoStackSetup {
     pub fn new() -> ProtoStackSetup {
         let mut lo_device = loopback::init(0);
-        let ip_interface = IPInterface::new("127.0.0.1", "255.255.255.0");
         lo_device.open().unwrap();
-        lo_device.register_interface(ip_interface);
+
+        let ip_interface = Arc::new(IPInterface::new("127.0.0.1", "255.255.255.0"));
+        lo_device.register_interface(ip_interface.clone());
+
         let mut devices = List::<NetDevice>::new();
         devices.push(lo_device);
 

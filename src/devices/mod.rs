@@ -35,7 +35,7 @@ pub struct NetDevice {
     pub address: [u8; NET_DEVICE_ADDR_LEN],
     pub broadcast: [u8; NET_DEVICE_ADDR_LEN],
     pub irq_entry: interrupt::IRQEntry,
-    pub interfaces: List<IPInterface>,
+    pub interfaces: List<Arc<IPInterface>>,
     pub driver_type: Option<DriverType>,
     pub driver_data: Option<DriverData>,
 }
@@ -60,13 +60,13 @@ impl NetDevice {
             address: [0; NET_DEVICE_ADDR_LEN],
             broadcast: [0; NET_DEVICE_ADDR_LEN],
             irq_entry,
-            interfaces: List::<IPInterface>::new(),
+            interfaces: List::<Arc<IPInterface>>::new(),
             driver_type: None,
             driver_data: None,
         }
     }
 
-    pub fn register_interface(&mut self, interface: IPInterface) {
+    pub fn register_interface(&mut self, interface: Arc<IPInterface>) {
         println!(
             "Registering {:?} interface on device: {}\n",
             interface.interface.family, self.name
@@ -74,18 +74,13 @@ impl NetDevice {
         self.interfaces.push(interface);
     }
 
-    pub fn get_interface(&self, family: NetInterfaceFamily) -> Option<&IPInterface> {
+    pub fn get_interface(&self, family: NetInterfaceFamily) -> Option<Arc<IPInterface>> {
         for ip_iface in self.interfaces.iter() {
             if ip_iface.interface.family == family {
-                return Some(ip_iface);
+                return Some(ip_iface.clone());
             }
         }
         None
-    }
-
-    pub fn get_interface_unicast(&self, family: NetInterfaceFamily) -> Option<u32> {
-        let interface = self.get_interface(family).expect("No matching interface.");
-        Some(interface.unicast)
     }
 
     fn is_open(&self) -> bool {
@@ -147,11 +142,3 @@ impl NetDevice {
         raise(SIGUSR1).unwrap();
     }
 }
-
-// fn add_device(device: NetDevice, new_device: NetDevice) {
-//     let mut head = &mut device;
-//     while head.next_device.is_some() {
-//         head = &mut head.next_device.unwrap();
-//     }
-//     head.next_device = Some(Box::new(new_device));
-// }

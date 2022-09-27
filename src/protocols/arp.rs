@@ -1,13 +1,8 @@
-use std::{
-    collections::{HashMap, HashSet},
-    convert::TryInto,
-    time::SystemTime,
-};
+use std::{collections::HashMap, convert::TryInto, sync::Arc, time::SystemTime};
 
 use crate::{
     devices::{ethernet::ETH_ADDR_LEN, NetDevice, NetDeviceType},
     net::{IPAdress, IPInterface, NetInterfaceFamily},
-    protocols::arp,
     util::{be_to_le_u16, bytes_to_struct, le_to_be_u16, to_u8_slice},
 };
 
@@ -96,7 +91,11 @@ struct ArpMessage {
     target_proto_addr: [u8; IP_ADDR_LEN],
 }
 
-pub fn arp_request(device: &mut NetDevice, target_ip: IPAdress) -> Result<(), ()> {
+pub fn arp_request(
+    device: &mut NetDevice,
+    interface: Arc<IPInterface>,
+    target_ip: IPAdress,
+) -> Result<(), ()> {
     let request_header = ArpHeader {
         hw_addr_space: le_to_be_u16(ARP_HW_SPACE_ETHER),
         hw_addr_len: ETH_ADDR_LEN as u8,
@@ -104,15 +103,12 @@ pub fn arp_request(device: &mut NetDevice, target_ip: IPAdress) -> Result<(), ()
         proto_addr_len: IP_ADDR_LEN as u8,
         op: le_to_be_u16(ARP_OP_REQUEST),
     };
-    let interface_unicast_ip = device
-        .get_interface_unicast(NetInterfaceFamily::IP)
-        .unwrap();
     let request_msg = ArpMessage {
         header: request_header,
         sender_hw_addr: device.address[..6]
             .try_into()
             .expect("ARP request failure: sender hw address."),
-        sender_proto_addr: interface_unicast_ip.to_le_bytes(),
+        sender_proto_addr: interface.unicast.to_le_bytes(),
         target_hw_addr: [0; 6],
         target_proto_addr: target_ip.to_le_bytes(),
     };
@@ -130,6 +126,7 @@ pub fn arp_request(device: &mut NetDevice, target_ip: IPAdress) -> Result<(), ()
 
 pub fn arp_reply(
     device: &mut NetDevice,
+    interface: Arc<IPInterface>,
     target_hw_addr: [u8; ETH_ADDR_LEN],
     target_ip: IPAdress,
     destination_hw_addr: [u8; ETH_ADDR_LEN],
@@ -142,15 +139,12 @@ pub fn arp_reply(
         op: le_to_be_u16(ARP_OP_REPLY),
     };
 
-    let interface_unicast_ip = device
-        .get_interface_unicast(NetInterfaceFamily::IP)
-        .unwrap();
     let reply_msg = ArpMessage {
         header: reply_header,
         sender_hw_addr: device.address[..6]
             .try_into()
             .expect("ARP reply failure: sender hw address."),
-        sender_proto_addr: interface_unicast_ip.to_le_bytes(),
+        sender_proto_addr: interface.unicast.to_le_bytes(),
         target_hw_addr,
         target_proto_addr: target_ip.to_le_bytes(),
     };
@@ -179,10 +173,8 @@ pub fn input(data: &[u8], device: &mut NetDevice, arp_table: &mut ArpTable) -> R
     }
 
     let target_ip = unsafe { bytes_to_struct::<u32>(&msg.target_proto_addr) };
-    let interface_unicast = device
-        .get_interface_unicast(NetInterfaceFamily::IP)
-        .unwrap();
-    if interface_unicast != target_ip {
+    let interface = device.get_interface(NetInterfaceFamily::IP).unwrap();
+    if interface.unicast != target_ip {
         println!("ARP Input: target IP: {target_ip} not matching with interface unicast IP.");
     } else {
         // Update or insert ARP Table with sender addresses
@@ -193,7 +185,13 @@ pub fn input(data: &[u8], device: &mut NetDevice, arp_table: &mut ArpTable) -> R
         // Reply in case of ARP Request
         if be_to_le_u16(msg.header.op) == ARP_OP_REQUEST {
             let sender_ip = unsafe { bytes_to_struct::<u32>(&msg.sender_proto_addr) };
-            return arp_reply(device, msg.sender_hw_addr, sender_ip, msg.sender_hw_addr);
+            return arp_reply(
+                device,
+                interface,
+                msg.sender_hw_addr,
+                sender_ip,
+                msg.sender_hw_addr,
+            );
         }
     }
 
@@ -202,6 +200,7 @@ pub fn input(data: &[u8], device: &mut NetDevice, arp_table: &mut ArpTable) -> R
 
 pub fn arp_resolve(
     device: &mut NetDevice,
+    interface: Arc<IPInterface>,
     arp_table: &mut ArpTable,
     target_ip: IPAdress,
 ) -> Result<Option<[u8; ETH_ADDR_LEN]>, ()> {
@@ -211,7 +210,7 @@ pub fn arp_resolve(
     // TODO: Interface family check if IP
     if let Some(hw_addr) = arp_table.get(target_ip) {
         Ok(Some(hw_addr))
-    } else if arp_request(device, target_ip).is_ok() {
+    } else if arp_request(device, interface, target_ip).is_ok() {
         Ok(None)
     } else {
         Err(())

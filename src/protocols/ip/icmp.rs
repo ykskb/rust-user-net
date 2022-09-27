@@ -1,10 +1,7 @@
-use crate::{
-    net::{IPAdress, IPInterface},
-    util::{bytes_to_struct, cksum16, to_u8_slice},
-};
+use crate::util::{bytes_to_struct, cksum16, to_u8_slice};
 use std::{mem::size_of, sync::Arc};
 
-use super::{ip_output, IPProtocolType};
+use super::{ip_output, IPAdress, IPInterface, IPProtocolType};
 
 const ICMP_TYPE_ECHOREPLY: u8 = 0;
 const ICMP_TYPE_DEST_UNREACH: u8 = 3;

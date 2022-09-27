@@ -4,8 +4,8 @@ pub mod loopback;
 use crate::{
     drivers::{DriverData, DriverType},
     interrupt,
-    net::{IPInterface, NetInterfaceFamily},
-    protocols::{NetProtocol, ProtocolData, ProtocolType},
+    net::NetInterfaceFamily,
+    protocols::{ip::IPInterface, NetProtocol, ProtocolData, ProtocolType},
     util::List,
 };
 use signal_hook::{consts::SIGUSR1, low_level::raise};
@@ -71,6 +71,7 @@ impl NetDevice {
             "Registering {:?} interface on device: {}\n",
             interface.interface.family, self.name
         );
+        // TODO: check duplicate inteface family type (IP or IPv6)
         self.interfaces.push(interface);
     }
 

@@ -1,15 +1,18 @@
 use crate::devices::loopback;
 use crate::devices::NetDevice;
-use crate::net::IPInterface;
 use crate::protocols::arp::ArpTable;
+use crate::protocols::ip::IPInterface;
+use crate::protocols::ip::IPRoute;
 use crate::protocols::NetProtocol;
 use crate::protocols::ProtocolType;
 use crate::util::List;
-use std::rc::Rc;
 use std::sync::mpsc::TryRecvError;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
+
+const LOOPBACK_IP: &str = "127.0.0.1";
+const LOOPBACK_NETMASK: &str = "255.255.255.0";
 
 pub struct ProtoStackSetup {
     devices: Arc<Mutex<List<NetDevice>>>,
@@ -19,17 +22,23 @@ pub struct ProtoStackSetup {
 
 impl ProtoStackSetup {
     pub fn new() -> ProtoStackSetup {
-        let mut lo_device = loopback::init(0);
-        lo_device.open().unwrap();
-
-        let ip_interface = Arc::new(IPInterface::new("127.0.0.1", "255.255.255.0"));
-        lo_device.register_interface(ip_interface.clone());
-
         let mut devices = List::<NetDevice>::new();
-        devices.push(lo_device);
-
-        let ip_proto = NetProtocol::new(ProtocolType::IP);
         let mut protocols = List::<NetProtocol>::new();
+        let mut ip_routes = List::<IPRoute>::new();
+
+        // Loopback
+        let mut loopback_device = loopback::init(0);
+        loopback_device.open().unwrap();
+
+        let loopback_interface = Arc::new(IPInterface::new(LOOPBACK_IP, LOOPBACK_NETMASK));
+        loopback_device.register_interface(loopback_interface.clone());
+        let loopback_route = IPRoute::interface_route(loopback_interface);
+        ip_routes.push(loopback_route);
+
+        devices.push(loopback_device);
+
+        // Protocols
+        let ip_proto = NetProtocol::new(ProtocolType::IP);
         protocols.push(ip_proto);
 
         ProtoStackSetup {

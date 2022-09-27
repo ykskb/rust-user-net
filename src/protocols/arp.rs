@@ -2,11 +2,11 @@ use std::{collections::HashMap, convert::TryInto, sync::Arc, time::SystemTime};
 
 use crate::{
     devices::{ethernet::ETH_ADDR_LEN, NetDevice, NetDeviceType},
-    net::{IPAdress, IPInterface, NetInterfaceFamily},
+    net::NetInterfaceFamily,
     util::{be_to_le_u16, bytes_to_struct, le_to_be_u16, to_u8_slice},
 };
 
-use super::ip::IP_ADDR_LEN;
+use super::ip::{IPAdress, IPInterface, IP_ADDR_LEN};
 use super::ProtocolType;
 
 const ARP_HW_SPACE_ETHER: u16 = 0x0001;

@@ -3,7 +3,7 @@ use crate::{
     drivers::{tap, DriverType},
     interrupt::IRQEntry,
     protocols::ProtocolType,
-    util::{to_u8_slice, u16_to_le},
+    util::{le_to_be_u16, to_u8_slice},
 };
 use std::{convert::TryInto, sync::Arc};
 
@@ -55,7 +55,7 @@ pub fn read_data(device: &NetDevice) -> Option<(ProtocolType, Vec<u8>)> {
 pub fn transmit(
     device: &mut NetDevice,
     ether_type: ProtocolType,
-    data: Arc<Vec<u8>>,
+    data: Vec<u8>,
     len: usize,
     dst: [u8; ETH_ADDR_LEN],
 ) -> Result<(), ()> {
@@ -66,18 +66,17 @@ pub fn transmit(
     let hdr = EthernetHeader {
         dst,
         src: src_address,
-        eth_type: u16_to_le(ether_type as u16),
+        eth_type: le_to_be_u16(ether_type as u16),
     };
     let hdr_bytes = unsafe { to_u8_slice::<EthernetHeader>(&hdr) };
-    let data_arc = data.as_ref();
 
     let mut frame: [u8; ETH_FRAME_MAX] = [0; ETH_FRAME_MAX];
     let mut pad_len: usize = 0;
-    let data_len = data_arc.len();
+    let data_len = data.len();
     let hdr_len = hdr_bytes.len();
 
     frame[..hdr_len].copy_from_slice(hdr_bytes);
-    frame[hdr_len..(hdr_len + data_len)].copy_from_slice(&data_arc[..]);
+    frame[hdr_len..(hdr_len + data_len)].copy_from_slice(&data[..]);
 
     if data_len < ETH_PAYLOAD_MIN {
         pad_len = ETH_PAYLOAD_MIN - data_len;

@@ -5,7 +5,7 @@ use crate::{
     },
     interrupt::INTR_IRQ_BASE,
     protocols::{NetProtocol, ProtocolType},
-    util::{bytes_to_struct, u16_to_le},
+    util::{be_to_le_u16, bytes_to_struct},
 };
 use ifstructs::ifreq;
 use nix::{
@@ -123,7 +123,7 @@ pub fn read_data(device: &NetDevice) -> Option<(ProtocolType, Vec<u8>)> {
         {
             break;
         }
-        let eth_type = u16_to_le(hdr.eth_type);
+        let eth_type = be_to_le_u16(hdr.eth_type);
         let data = (&buf[hdr_len..]).to_vec();
         return Some((ProtocolType::from_u16(eth_type), data));
     }

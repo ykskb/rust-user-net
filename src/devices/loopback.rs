@@ -28,9 +28,9 @@ pub fn read_data(device: &NetDevice) -> Option<(ProtocolType, Vec<u8>)> {
     ))
 }
 
-pub fn transmit(device: &mut NetDevice, data: Arc<Vec<u8>>) -> Result<(), ()> {
+pub fn transmit(device: &mut NetDevice, data: Vec<u8>) -> Result<(), ()> {
     println!("Transmitting data through loopback device...\n");
-    device.irq_entry.custom_data = Some(data);
+    device.irq_entry.custom_data = Some(Arc::new(data));
     raise(IRQ_LOOPBACK).unwrap();
     Ok(())
 }

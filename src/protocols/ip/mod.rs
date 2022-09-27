@@ -2,12 +2,14 @@ pub mod icmp;
 
 use crate::{
     net::{IPAdress, NetInterface},
-    util::{cksum16, to_u8_slice, u16_to_le},
+    util::{cksum16, le_to_be_u16},
 };
 use std::{
     mem::{size_of, size_of_val},
     sync::Mutex,
 };
+
+pub const IP_ADDR_LEN: usize = 4;
 
 // see https://www.iana.org/assignments/protocol-numbers/protocol-numbers.txt
 pub enum IPProtocolType {
@@ -86,8 +88,8 @@ pub fn ip_output(ip_proto: IPProtocolType, data: Vec<u8>, src: IPAdress, dst: IP
     let mut hdr = IPHeader {
         ver_len: (IP_VERSION_4 << 4) | (hlen as u8 >> 2),
         service_type: 0,
-        total_len: u16_to_le(total),
-        id: u16_to_le(id_manager.generate_id()),
+        total_len: le_to_be_u16(total),
+        id: le_to_be_u16(id_manager.generate_id()),
         offset: 0,
         ttl: 0xff,
         protocol: IPProtocolType::ICMP as u8,
@@ -105,7 +107,7 @@ mod test {
 
     use crate::{
         net::ip_addr_to_bytes,
-        util::{cksum16, u16_to_le},
+        util::{cksum16, le_to_be_u16},
     };
 
     use super::{IPHeader, IPHeaderIdGenerator, IPProtocolType, IP_VERSION_4};
@@ -122,8 +124,8 @@ mod test {
         let hdr = IPHeader {
             ver_len: (IP_VERSION_4 << 4) | (hlen as u8 >> 2), // devide by 4
             service_type: 0,
-            total_len: u16_to_le(total),
-            id: u16_to_le(id),
+            total_len: le_to_be_u16(total),
+            id: le_to_be_u16(id),
             offset: 0,
             ttl: 0xff,
             protocol: IPProtocolType::ICMP as u8,

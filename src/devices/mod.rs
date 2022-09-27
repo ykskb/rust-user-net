@@ -4,7 +4,7 @@ pub mod loopback;
 use crate::{
     drivers::{DriverData, DriverType},
     interrupt,
-    net::IPInterface,
+    net::{IPInterface, NetInterfaceFamily},
     protocols::{NetProtocol, ProtocolData, ProtocolType},
     util::List,
 };
@@ -16,26 +16,26 @@ use self::ethernet::ETH_ADDR_LEN;
 const DEVICE_FLAG_UP: u16 = 0x0001;
 
 pub const IRQ_FLAG_SHARED: u8 = 0x0001;
+const NET_DEVICE_ADDR_LEN: usize = 14;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum NetDeviceType {
     Loopback,
     Ethernet,
 }
 
-#[derive(Debug)]
 pub struct NetDevice {
     index: u8,
-    device_type: NetDeviceType,
+    pub device_type: NetDeviceType,
     pub name: String,
     mtu: usize,
     flags: u16,
     header_len: u16,
     address_len: u16,
-    pub address: [u8; 14],
+    pub address: [u8; NET_DEVICE_ADDR_LEN],
+    pub broadcast: [u8; NET_DEVICE_ADDR_LEN],
     pub irq_entry: interrupt::IRQEntry,
-    pub interface: Option<Box<IPInterface>>,
-    pub next_device: Option<Box<NetDevice>>,
+    pub interfaces: List<IPInterface>,
     pub driver_type: Option<DriverType>,
     pub driver_data: Option<DriverData>,
 }
@@ -57,10 +57,10 @@ impl NetDevice {
             flags,
             header_len: 0,
             address_len: 0,
-            address: [0; 14],
+            address: [0; NET_DEVICE_ADDR_LEN],
+            broadcast: [0; NET_DEVICE_ADDR_LEN],
             irq_entry,
-            interface: None,
-            next_device: None,
+            interfaces: List::<IPInterface>::new(),
             driver_type: None,
             driver_data: None,
         }
@@ -71,16 +71,21 @@ impl NetDevice {
             "Registering {:?} interface on device: {}\n",
             interface.interface.family, self.name
         );
-        let interface = Box::new(interface);
-        if self.interface.is_none() {
-            self.interface = Some(interface);
-        } else {
-            let mut head = self.interface.as_mut().unwrap();
-            while head.next.is_some() {
-                head = head.next.as_mut().unwrap();
+        self.interfaces.push(interface);
+    }
+
+    pub fn get_interface(&self, family: NetInterfaceFamily) -> Option<&IPInterface> {
+        for ip_iface in self.interfaces.iter() {
+            if ip_iface.interface.family == family {
+                return Some(ip_iface);
             }
-            head.next = Some(interface);
         }
+        None
+    }
+
+    pub fn get_interface_unicast(&self, family: NetInterfaceFamily) -> Option<u32> {
+        let interface = self.get_interface(family).expect("No matching interface.");
+        Some(interface.unicast)
     }
 
     fn is_open(&self) -> bool {
@@ -95,18 +100,6 @@ impl NetDevice {
         }
     }
 
-    pub fn open_all(&mut self) -> Result<(), &str> {
-        self.open().unwrap();
-        let mut head = &mut self.next_device;
-        while head.is_some() {
-            let dev = head.as_mut().unwrap();
-            let d = dev.as_mut();
-            d.open().unwrap();
-            head = &mut d.next_device;
-        }
-        Ok(())
-    }
-
     pub fn close(&self) -> Result<(), &str> {
         match self.device_type {
             NetDeviceType::Loopback => Ok(()),
@@ -118,7 +111,7 @@ impl NetDevice {
     pub fn transmit(
         &mut self,
         proto_type: ProtocolType,
-        data: Arc<Vec<u8>>,
+        data: Vec<u8>,
         len: usize,
         dst: [u8; ETH_ADDR_LEN],
     ) -> Result<(), ()> {

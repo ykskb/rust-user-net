@@ -1,6 +1,7 @@
 use crate::devices::loopback;
 use crate::devices::NetDevice;
 use crate::net::IPInterface;
+use crate::protocols::arp::ArpTable;
 use crate::protocols::NetProtocol;
 use crate::protocols::ProtocolType;
 use crate::util::List;
@@ -12,6 +13,7 @@ use std::time::Duration;
 pub struct ProtoStackSetup {
     devices: Arc<Mutex<List<NetDevice>>>,
     protocols: Arc<Mutex<List<NetProtocol>>>,
+    arp_table: Arc<Mutex<ArpTable>>,
 }
 
 impl ProtoStackSetup {
@@ -30,6 +32,7 @@ impl ProtoStackSetup {
         ProtoStackSetup {
             devices: Arc::new(Mutex::new(devices)),
             protocols: Arc::new(Mutex::new(protocols)),
+            arp_table: Arc::new(Mutex::new(ArpTable::new())),
         }
     }
 
@@ -47,7 +50,7 @@ impl ProtoStackSetup {
 
             let mut device_mutex = device.lock().unwrap();
             let device = device_mutex.iter_mut().next().unwrap();
-            let data = Arc::new(vec![3, 4, 5, 6]);
+            let data = vec![3, 4, 5, 6];
             device.transmit(ProtocolType::IP, data, 4, [0; 6]).unwrap();
             drop(device_mutex);
 
@@ -69,11 +72,12 @@ impl ProtoStackSetup {
 
     /// Triggers data queue check for all protocols.
     pub fn handle_protocol(&self) {
-        let devices = self.devices.lock().unwrap();
+        let mut devices = self.devices.lock().unwrap();
         let mut protocols = self.protocols.lock().unwrap();
+        let mut arp_table = self.arp_table.lock().unwrap();
 
         for protocol in protocols.iter_mut() {
-            protocol.handle_input(&devices);
+            protocol.handle_input(&mut devices, &mut arp_table);
         }
     }
 }

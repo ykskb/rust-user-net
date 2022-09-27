@@ -1,6 +1,6 @@
 pub type IPAdress = u32;
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub enum NetInterfaceFamily {
     IP,
     IPV6,

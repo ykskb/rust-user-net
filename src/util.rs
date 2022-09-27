@@ -66,28 +66,56 @@ impl<T> List<T> {
     }
 }
 
-/// u16 to little endian.
-pub fn u16_to_le(v: u16) -> u16 {
-    if cfg!(target_endian = "big") {
-        return v;
-    }
+const TARGET_BIG_ENDIAN: bool = cfg!(target_endian = "big");
+
+fn byte_swap_u16(v: u16) -> u16 {
     (v & 0x00ff) << 8 | (v & 0xff00) >> 8
 }
 
-/// u32 to little endian.
-pub fn u32_to_le(v: u32) -> u32 {
-    if cfg!(target_endian = "big") {
-        return v;
-    }
+fn byte_swap_u32(v: u32) -> u32 {
     (v & 0x000000ff) << 24 | (v & 0x0000ff00) << 8 | (v & 0x00ff0000) >> 8 | (v & 0xff000000) >> 24
 }
 
+/// Converts big endian u16 to little endian if a target is a little endian machine.
+pub fn be_to_le_u16(v: u16) -> u16 {
+    if TARGET_BIG_ENDIAN {
+        return v;
+    }
+    byte_swap_u16(v)
+}
+
+/// Converts little endian u16 to big endian if a target is a little endian machine.
+pub fn le_to_be_u16(v: u16) -> u16 {
+    if TARGET_BIG_ENDIAN {
+        return v;
+    }
+    byte_swap_u16(v)
+}
+
+/// Converts big endian u32 to little endian if a target is a little endian machine.
+pub fn be_to_le_u32(v: u32) -> u32 {
+    if TARGET_BIG_ENDIAN {
+        return v;
+    }
+    byte_swap_u32(v)
+}
+
+/// Converts little endian u32 to big endian if a target is a little endian machine.
+pub fn le_to_be_u32(v: u32) -> u32 {
+    if TARGET_BIG_ENDIAN {
+        return v;
+    }
+    byte_swap_u32(v)
+}
+
+/// Converts a struct to u8 slice.
 pub unsafe fn to_u8_slice<T: Sized>(p: &T) -> &[u8] {
     ::std::slice::from_raw_parts((p as *const T) as *const u8, ::std::mem::size_of::<T>())
 }
 
+/// Converts u8 slice to a struct.
 pub unsafe fn bytes_to_struct<T: Sized>(b: &[u8]) -> T {
-    let s: T = unsafe { std::ptr::read(b.as_ptr() as *const _) };
+    let s: T = std::ptr::read(b.as_ptr() as *const _);
     s
 }
 

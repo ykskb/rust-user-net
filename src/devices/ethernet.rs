@@ -1,11 +1,12 @@
-use super::{NetDevice, NetDeviceType};
+use super::{NetDevice, NetDeviceType, DEVICE_FLAG_BROADCAST, DEVICE_FLAG_NEED_ARP};
 use crate::{
-    drivers::{tap, DriverType},
+    drivers::{pcap, tap, DriverType},
     interrupt::IRQEntry,
     protocols::ProtocolType,
+    util::{be_to_le_u16, bytes_to_struct},
     util::{le_to_be_u16, to_u8_slice},
 };
-use std::{convert::TryInto, sync::Arc};
+use std::{convert::TryInto, mem::size_of};
 
 const ETH_HDR_SIZE: usize = 14;
 const ETH_FRAME_MIN: usize = 60; // without FCS
@@ -45,11 +46,28 @@ pub fn open(device: &mut NetDevice) -> Result<(), ()> {
     Ok(())
 }
 
-pub fn read_data(device: &NetDevice) -> Option<(ProtocolType, Vec<u8>)> {
-    match device.driver_type.as_ref().unwrap() {
+pub fn read_data(device: &NetDevice) -> Option<(ProtocolType, Vec<u8>, usize)> {
+    let (len, buf) = match device.driver_type.as_ref().unwrap() {
         DriverType::Tap => tap::read_data(device),
-        DriverType::Pcap => None,
+        DriverType::Pcap => pcap::read_data(device),
+    };
+
+    let hdr_len = size_of::<EthernetHeader>();
+    if len < hdr_len {
+        panic!("data is smaller than eth header.")
     }
+
+    let hdr = unsafe { bytes_to_struct::<EthernetHeader>(&buf) };
+
+    // Check if address matches with this device.
+    if device.address[..ETH_ADDR_LEN] != hdr.dst[..ETH_ADDR_LEN]
+        || ETH_ADDR_BROADCAST != hdr.dst[..ETH_ADDR_LEN]
+    {
+        return None;
+    }
+    let eth_type = be_to_le_u16(hdr.eth_type);
+    let data = (&buf[hdr_len..]).to_vec();
+    return Some((ProtocolType::from_u16(eth_type), data, len));
 }
 
 pub fn transmit(
@@ -92,11 +110,13 @@ pub fn transmit(
 pub fn init(i: u8, driver_type: DriverType) -> NetDevice {
     let irq_entry = IRQEntry::new(0, 0);
     let mut device = NetDevice::new(
-        NetDeviceType::Ethernet,
-        String::from("lo"),
-        ETH_PAYLOAD_MAX,
-        0,
         i,
+        NetDeviceType::Ethernet,
+        String::from("eth"),
+        ETH_PAYLOAD_MAX,
+        DEVICE_FLAG_BROADCAST | DEVICE_FLAG_NEED_ARP,
+        ETH_HDR_SIZE as u16,
+        ETH_ADDR_LEN as u16,
         irq_entry,
     );
     device.driver_type = Some(driver_type);

@@ -1,24 +1,21 @@
+use super::DriverData;
 use crate::{
     devices::{
-        ethernet::{EthernetHeader, ETH_ADDR_ANY, ETH_ADDR_BROADCAST, ETH_ADDR_LEN, ETH_FRAME_MAX},
+        ethernet::{ETH_ADDR_ANY, ETH_FRAME_MAX},
         NetDevice,
     },
     interrupt::INTR_IRQ_BASE,
-    protocols::{NetProtocol, ProtocolType},
-    util::{be_to_le_u16, bytes_to_struct},
 };
 use ifstructs::ifreq;
 use nix::{
-    errno::{errno, Errno},
+    errno::errno,
     ioctl_write_ptr,
     libc::{c_int, fcntl, F_SETFL, F_SETOWN, IFF_NO_PI, IFF_TAP, O_ASYNC, SIOCGIFHWADDR},
     poll::{self, PollFd, PollFlags},
     sys::socket::{socket, AddressFamily, SockFlag, SockType},
     unistd::{read, write},
 };
-use std::{fs::File, mem::size_of, os::unix::prelude::AsRawFd, process};
-
-use super::DriverData;
+use std::{fs::File, os::unix::prelude::AsRawFd, process};
 
 const TUN_PATH: &str = "/dev/net/tun";
 const TUN_IOC_MAGIC: u8 = b'T';
@@ -92,7 +89,7 @@ pub fn open(device: &mut NetDevice) {
     device.driver_data = Some(DriverData::new(fd, ETH_TAP_IRQ))
 }
 
-pub fn read_data(device: &NetDevice) -> Option<(ProtocolType, Vec<u8>)> {
+pub fn read_data(device: &NetDevice) -> (usize, [u8; ETH_FRAME_MAX]) {
     let fd = device.driver_data.as_ref().unwrap().fd;
     let mut poll_fds = [PollFd::new(fd, PollFlags::POLLIN)];
     let mut buf: [u8; ETH_FRAME_MAX] = [0; ETH_FRAME_MAX];
@@ -112,22 +109,9 @@ pub fn read_data(device: &NetDevice) -> Option<(ProtocolType, Vec<u8>)> {
         if len < 1 && errno() != EINTR {
             panic!("read failed.");
         }
-        let hdr_len = size_of::<EthernetHeader>();
-        if len < hdr_len {
-            panic!("data is smaller than eth header.")
-        }
-
-        let hdr = unsafe { bytes_to_struct::<EthernetHeader>(&buf) };
-        if device.address[..ETH_ADDR_LEN] != hdr.dst[..ETH_ADDR_LEN]
-            || ETH_ADDR_BROADCAST != hdr.dst[..ETH_ADDR_LEN]
-        {
-            break;
-        }
-        let eth_type = be_to_le_u16(hdr.eth_type);
-        let data = (&buf[hdr_len..]).to_vec();
-        return Some((ProtocolType::from_u16(eth_type), data));
+        return (len, buf);
     }
-    None
+    (0, buf)
 }
 
 pub fn write_data(device: &NetDevice, data: &[u8]) -> Result<(), ()> {

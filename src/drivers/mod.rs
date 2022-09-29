@@ -1,3 +1,4 @@
+pub mod pcap;
 pub mod tap;
 
 #[derive(Debug)]

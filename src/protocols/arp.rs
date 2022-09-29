@@ -1,13 +1,12 @@
 use std::{collections::HashMap, convert::TryInto, sync::Arc, time::SystemTime};
 
+use super::ip::{IPAdress, IPInterface, IPRoute, IP_ADDR_LEN};
+use super::ProtocolType;
 use crate::{
     devices::{ethernet::ETH_ADDR_LEN, NetDevice, NetDeviceType},
     net::NetInterfaceFamily,
-    util::{be_to_le_u16, bytes_to_struct, le_to_be_u16, to_u8_slice},
+    util::{be_to_le_u16, bytes_to_struct, le_to_be_u16, to_u8_slice, List},
 };
-
-use super::ip::{IPAdress, IPInterface, IP_ADDR_LEN};
-use super::ProtocolType;
 
 const ARP_HW_SPACE_ETHER: u16 = 0x0001;
 const ARP_PROTO_SPACE_IP: u16 = 0x0800;
@@ -158,7 +157,13 @@ pub fn arp_reply(
     )
 }
 
-pub fn input(data: &[u8], device: &mut NetDevice, arp_table: &mut ArpTable) -> Result<(), ()> {
+pub fn input(
+    data: &[u8],
+    _len: usize,
+    device: &mut NetDevice,
+    arp_table: &mut ArpTable,
+    _ip_routes: &List<IPRoute>,
+) -> Result<(), ()> {
     let msg = unsafe { bytes_to_struct::<ArpMessage>(data) };
 
     if msg.header.hw_addr_space != ARP_HW_SPACE_ETHER
@@ -207,7 +212,7 @@ pub fn arp_resolve(
     if device.device_type != NetDeviceType::Ethernet {
         return Err(());
     }
-    // TODO: Interface family check if IP
+    // TODO: Check interface family to be IP
     if let Some(hw_addr) = arp_table.get(target_ip) {
         Ok(Some(hw_addr))
     } else if arp_request(device, interface, target_ip).is_ok() {

@@ -14,6 +14,10 @@ use std::sync::Arc;
 use self::ethernet::ETH_ADDR_LEN;
 
 const DEVICE_FLAG_UP: u16 = 0x0001;
+pub const DEVICE_FLAG_LOOPBACK: u16 = 0x0010;
+pub const DEVICE_FLAG_BROADCAST: u16 = 0x0020;
+pub const DEVICE_FLAG_P2P: u16 = 0x0040;
+pub const DEVICE_FLAG_NEED_ARP: u16 = 0x0100;
 
 pub const IRQ_FLAG_SHARED: u8 = 0x0001;
 const NET_DEVICE_ADDR_LEN: usize = 14;
@@ -28,10 +32,10 @@ pub struct NetDevice {
     index: u8,
     pub device_type: NetDeviceType,
     pub name: String,
-    mtu: usize,
-    flags: u16,
-    header_len: u16,
-    address_len: u16,
+    pub mtu: usize,
+    pub flags: u16,
+    pub header_len: u16,
+    pub address_len: u16,
     pub address: [u8; NET_DEVICE_ADDR_LEN],
     pub broadcast: [u8; NET_DEVICE_ADDR_LEN],
     pub irq_entry: interrupt::IRQEntry,
@@ -42,11 +46,13 @@ pub struct NetDevice {
 
 impl NetDevice {
     pub fn new(
+        i: u8,
         device_type: NetDeviceType,
         name: String,
         mtu: usize,
         flags: u16,
-        i: u8,
+        header_len: u16,
+        address_len: u16,
         irq_entry: interrupt::IRQEntry,
     ) -> NetDevice {
         NetDevice {
@@ -55,8 +61,8 @@ impl NetDevice {
             name,
             mtu,
             flags,
-            header_len: 0,
-            address_len: 0,
+            header_len,
+            address_len,
             address: [0; NET_DEVICE_ADDR_LEN],
             broadcast: [0; NET_DEVICE_ADDR_LEN],
             irq_entry,
@@ -131,10 +137,10 @@ impl NetDevice {
             return;
         }
 
-        let (proto_type, data) = incoming_data.unwrap();
+        let (proto_type, data, len) = incoming_data.unwrap();
         for protocol in protocols.iter_mut() {
             if protocol.protocol_type == proto_type {
-                let data_entry: ProtocolData = ProtocolData::new(Some(Arc::new(data)), irq);
+                let data_entry: ProtocolData = ProtocolData::new(irq, Some(Arc::new(data)), len);
                 protocol.input_head.push_back(data_entry);
                 break;
             }

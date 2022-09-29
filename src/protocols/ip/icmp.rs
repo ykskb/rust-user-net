@@ -1,7 +1,10 @@
-use crate::util::{bytes_to_struct, cksum16, to_u8_slice};
-use std::{mem::size_of, sync::Arc};
-
-use super::{ip_output, IPAdress, IPInterface, IPProtocolType};
+use super::{IPAdress, IPInterface, IPProtocolType, IPRoute};
+use crate::{
+    devices::NetDevice,
+    protocols::arp::ArpTable,
+    util::{bytes_to_struct, cksum16, to_u8_slice, List},
+};
+use std::mem::size_of;
 
 const ICMP_TYPE_ECHOREPLY: u8 = 0;
 const ICMP_TYPE_DEST_UNREACH: u8 = 3;
@@ -52,12 +55,15 @@ pub struct ICMPEcho {
     seq: u16,
 }
 
-pub fn icmp_input(
-    data: Arc<[u8]>,
+pub fn input(
+    data: &[u8],
     len: usize,
     src: IPAdress,
     mut dst: IPAdress,
-    iface: IPInterface,
+    device: &mut NetDevice,
+    iface: &IPInterface,
+    arp_table: &mut ArpTable,
+    ip_routes: &List<IPRoute>,
 ) -> Result<(), ()> {
     let icmp_hdr_size = size_of::<ICMPHeader>();
     let hdr = unsafe { bytes_to_struct::<ICMPHeader>(data.as_ref()) };
@@ -71,7 +77,7 @@ pub fn icmp_input(
         if dst != iface.unicast {
             dst = iface.unicast;
         }
-        icmp_output(
+        output(
             ICMP_TYPE_ECHOREPLY,
             hdr.code,
             hdr.values,
@@ -79,12 +85,15 @@ pub fn icmp_input(
             len - icmp_hdr_size,
             src,
             dst,
+            device,
+            arp_table,
+            ip_routes,
         );
     }
     Ok(())
 }
 
-pub fn icmp_output(
+pub fn output(
     icmp_type: u8,
     code: u8,
     values: u32,
@@ -92,6 +101,9 @@ pub fn icmp_output(
     len: usize,
     src: IPAdress,
     dst: IPAdress,
+    device: &mut NetDevice,
+    arp_table: &mut ArpTable,
+    ip_routes: &List<IPRoute>,
 ) {
     let hlen = size_of::<ICMPHeader>();
     let mut hdr = ICMPHeader {
@@ -102,8 +114,17 @@ pub fn icmp_output(
     };
     // add data after header
     hdr.check_sum = cksum16(&hdr, hlen, 0);
-    let header_bytes = unsafe { to_u8_slice(&hdr) }; // add icmp data here
+    let header_bytes = unsafe { to_u8_slice::<ICMPHeader>(&hdr) }; // add icmp data here
     let mut data = header_bytes.to_vec();
     data.append(&mut icmp_data);
-    ip_output(IPProtocolType::ICMP, data, src, dst);
+    super::output(
+        IPProtocolType::Icmp,
+        data,
+        src,
+        dst,
+        device,
+        arp_table,
+        ip_routes,
+    )
+    .unwrap();
 }

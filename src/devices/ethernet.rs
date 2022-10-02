@@ -67,7 +67,7 @@ pub fn read_data(device: &NetDevice) -> Option<(ProtocolType, Vec<u8>, usize)> {
     }
     let eth_type = be_to_le_u16(hdr.eth_type);
     let data = (&buf[hdr_len..]).to_vec();
-    return Some((ProtocolType::from_u16(eth_type), data, len));
+    Some((ProtocolType::from_u16(eth_type), data, len))
 }
 
 pub fn transmit(

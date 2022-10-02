@@ -2,10 +2,11 @@ use super::DriverData;
 use crate::{
     devices::{
         ethernet::{ETH_ADDR_ANY, ETH_FRAME_MAX},
-        NetDevice,
+        NetDevice, NET_DEVICE_ADDR_LEN,
     },
     interrupt::INTR_IRQ_BASE,
 };
+use core::slice;
 use ifstructs::ifreq;
 use nix::{
     errno::errno,
@@ -50,7 +51,11 @@ fn set_tap_address(device: &mut NetDevice) {
 
     unsafe {
         get_hw_addr(soc, &ifr).unwrap();
-        device.address = ifr.ifr_ifru.ifr_hwaddr.sa_data;
+        let hw_addr_u8 = slice::from_raw_parts(
+            ifr.ifr_ifru.ifr_hwaddr.sa_data.as_ptr(),
+            NET_DEVICE_ADDR_LEN,
+        );
+        device.address.copy_from_slice(hw_addr_u8);
     }
 }
 

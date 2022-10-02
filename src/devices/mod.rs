@@ -20,7 +20,7 @@ pub const DEVICE_FLAG_P2P: u16 = 0x0040;
 pub const DEVICE_FLAG_NEED_ARP: u16 = 0x0100;
 
 pub const IRQ_FLAG_SHARED: u8 = 0x0001;
-const NET_DEVICE_ADDR_LEN: usize = 14;
+pub const NET_DEVICE_ADDR_LEN: usize = 14;
 
 #[derive(Debug, PartialEq)]
 pub enum NetDeviceType {

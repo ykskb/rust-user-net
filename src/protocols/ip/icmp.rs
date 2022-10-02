@@ -36,7 +36,6 @@ const ICMP_CODE_REDIRECT_TOS_HOST: u8 = 3;
 const ICMP_CODE_EXCEEDED_TTL: u8 = 0;
 const ICMP_CODE_EXCEEDED_FRAGMENT: u8 = 1;
 
-#[derive(Debug)]
 #[repr(packed)]
 pub struct ICMPHeader {
     icmp_type: u8,
@@ -45,7 +44,6 @@ pub struct ICMPHeader {
     values: u32,
 }
 
-#[derive(Debug)]
 #[repr(packed)]
 pub struct ICMPEcho {
     icmp_type: u8,

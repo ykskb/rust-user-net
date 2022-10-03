@@ -43,6 +43,10 @@ impl<T> List<T> {
     pub fn push(&mut self, elem: T) {
         let new_node = Box::new(Node { elem, next: None });
         let mut head = self.head.as_mut();
+        if head.is_none() {
+            self.head = Some(new_node);
+            return;
+        }
         while head.is_some() {
             let node = head.unwrap();
             if node.next.is_none() {
@@ -139,4 +143,21 @@ pub fn cksum16<T: Sized>(hdr: &T, hlen: usize, init: u32) -> u16 {
         sum = (sum & 0xffff) + (sum >> 16);
     }
     !(sum as u16) // return NOT value
+}
+
+#[cfg(test)]
+mod test {
+    use super::List;
+
+    #[test]
+    fn test_list() {
+        let mut list = List::new();
+        list.push(1);
+        list.push(2);
+        list.push(3);
+        let mut iteration = list.iter();
+        assert_eq!(iteration.next(), Some(&1));
+        assert_eq!(iteration.next(), Some(&2));
+        assert_eq!(iteration.next(), Some(&3));
+    }
 }

@@ -1,3 +1,4 @@
+use crate::devices::ethernet;
 use crate::devices::loopback;
 use crate::devices::NetDevice;
 use crate::protocols::arp::ArpTable;
@@ -36,6 +37,12 @@ impl ProtoStackSetup {
         loopback_device.register_interface(loopback_interface.clone());
 
         devices.push(loopback_device);
+
+        // Ethernet device
+        let mut ethernet_device = ethernet::init(1, crate::drivers::DriverType::Tap);
+        ethernet_device.open().unwrap();
+
+        devices.push(ethernet_device);
 
         // Loopback route
         let loopback_route = IPRoute::interface_route(loopback_interface);

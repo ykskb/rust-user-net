@@ -112,7 +112,7 @@ pub fn init(i: u8, driver_type: DriverType) -> NetDevice {
     let mut device = NetDevice::new(
         i,
         NetDeviceType::Ethernet,
-        String::from("eth"),
+        String::from("tap0"),
         ETH_PAYLOAD_MAX,
         DEVICE_FLAG_BROADCAST | DEVICE_FLAG_NEED_ARP,
         ETH_HDR_SIZE as u16,

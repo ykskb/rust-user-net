@@ -43,6 +43,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ioctl-sys"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c429fffa658f288669529fc26565f728489a2e39bc7b24a428aaaf51355182e"
+
+[[package]]
 name = "libc"
 version = "0.2.129"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -82,6 +88,7 @@ name = "rust-tcp-ip"
 version = "0.1.0"
 dependencies = [
  "ifstructs",
+ "ioctl-sys",
  "nix",
  "signal-hook",
 ]

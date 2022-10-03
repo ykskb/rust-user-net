@@ -14,7 +14,9 @@
 		"--cap-add=SYS_PTRACE",
 		"--security-opt",
 		"seccomp=unconfined",
-		"--cap-add=NET_ADMIN"  // tap device
+		"--privileged",
+		"--cap-add=NET_ADMIN",
+		"--device=/dev/net/tun:/dev/net/tun"  // tap device
 	],
 
 	// Configure tool-specific properties.

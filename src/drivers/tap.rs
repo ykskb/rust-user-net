@@ -1,22 +1,23 @@
 use super::DriverData;
+use std::io;
 use crate::{
     devices::{
         ethernet::{ETH_ADDR_ANY, ETH_FRAME_MAX},
         NetDevice, NET_DEVICE_ADDR_LEN,
     },
-    interrupt::INTR_IRQ_BASE,
+    interrupt::INTR_IRQ_BASE
 };
 use core::slice;
 use ifstructs::ifreq;
+use ioctl::*;
 use nix::{
     errno::errno,
-    ioctl_write_ptr,
     libc::{c_int, fcntl, F_SETFL, F_SETOWN, IFF_NO_PI, IFF_TAP, O_ASYNC, SIOCGIFHWADDR},
     poll::{self, PollFd, PollFlags},
     sys::socket::{socket, AddressFamily, SockFlag, SockType},
-    unistd::{read, write},
+    unistd::{read, write}, 
 };
-use std::{fs::File, os::unix::prelude::AsRawFd, process};
+use std::{fs::OpenOptions, os::unix::prelude::AsRawFd, process};
 
 const TUN_PATH: &str = "/dev/net/tun";
 const TUN_IOC_MAGIC: u8 = b'T';
@@ -25,17 +26,18 @@ const TUN_IOC_SET_IFF: u8 = 202;
 const F_SETSIG: c_int = 10; // not defined in nix
 const AF_INET_RAW: u16 = 2;
 
-const SOCK_IOC_TYPE: u8 = 0x89; // uapi/linux/sockios.h
+// const SOCK_IOC_TYPE: u8 = 0x89; // uapi/linux/sockios.h
 
 const ETH_TAP_IRQ: i32 = INTR_IRQ_BASE + 2;
 
 const EINTR: i32 = 4;
 
 // Sets interface flag with IFR
-ioctl_write_ptr!(tun_set_iff, TUN_IOC_MAGIC, TUN_IOC_SET_IFF, ifreq);
+ioctl!(write tun_set_iff with TUN_IOC_MAGIC, TUN_IOC_SET_IFF; c_int);
 
 // Gets hardware address of a socket
-ioctl_write_ptr!(get_hw_addr, SOCK_IOC_TYPE, SIOCGIFHWADDR, ifreq);
+ioctl!(bad read get_hw_addr with SIOCGIFHWADDR; ifreq);
+
 
 fn set_tap_address(device: &mut NetDevice) {
     let soc = socket(
@@ -50,24 +52,36 @@ fn set_tap_address(device: &mut NetDevice) {
     ifr.ifr_ifru.ifr_addr.sa_family = AF_INET_RAW;
 
     unsafe {
-        get_hw_addr(soc, &ifr).unwrap();
+        if get_hw_addr(soc, &mut ifr) < 0 {
+            let err = io::Error::last_os_error();
+            println!("Get IF HW Addr failed: {err}");
+            panic!();
+        }
+
         let hw_addr_u8 = slice::from_raw_parts(
-            ifr.ifr_ifru.ifr_hwaddr.sa_data.as_ptr(),
+            ifr.ifr_ifru.ifr_hwaddr.sa_data.as_ptr() as *const u8,
             NET_DEVICE_ADDR_LEN,
         );
+        let name = ifr.get_name().unwrap();
+        println!("Retrieved HW Address for {name}: {:x?}", hw_addr_u8);
         device.address.copy_from_slice(hw_addr_u8);
     }
 }
 
 pub fn open(device: &mut NetDevice) {
-    let fd = File::open(TUN_PATH).unwrap().as_raw_fd();
+    let file = OpenOptions::new().read(true).write(true).open(TUN_PATH).unwrap();
+    let fd = file.as_raw_fd();
 
     let mut ifr = ifreq::from_name(&device.name).unwrap();
     let ifr_flag = IFF_TAP | IFF_NO_PI;
     ifr.set_flags(ifr_flag as i16);
 
     unsafe {
-        tun_set_iff(fd, &ifr).unwrap();
+        if tun_set_iff(fd, &mut ifr as *mut _ as *mut _) < 0 {
+            let err = io::Error::last_os_error();
+            println!("TUN set IFF failed: {err}");
+            panic!();
+        }
 
         // Signal settings for a file descriptor of TAP
         // https://man7.org/linux/man-pages/man2/fcntl.2.html

@@ -53,6 +53,8 @@ impl NetDevice {
         flags: u16,
         header_len: u16,
         address_len: u16,
+        address: [u8; NET_DEVICE_ADDR_LEN],
+        broadcast: [u8; NET_DEVICE_ADDR_LEN],
         irq_entry: interrupt::IRQEntry,
     ) -> NetDevice {
         NetDevice {
@@ -63,8 +65,8 @@ impl NetDevice {
             flags,
             header_len,
             address_len,
-            address: [0; NET_DEVICE_ADDR_LEN],
-            broadcast: [0; NET_DEVICE_ADDR_LEN],
+            address,
+            broadcast,
             irq_entry,
             interfaces: List::<Arc<IPInterface>>::new(),
             driver_type: None,
@@ -127,13 +129,14 @@ impl NetDevice {
     }
 
     /// ISR (interrupt service routine) for registered IRQs. Handles inputs and raises SIGUSR1.
-    pub fn isr(&self, irq: i32, protocols: &mut List<NetProtocol>) {
+    pub fn isr(&mut self, irq: i32, protocols: &mut List<NetProtocol>) {
         let incoming_data = match self.device_type {
             NetDeviceType::Loopback => loopback::read_data(self),
             NetDeviceType::Ethernet => ethernet::read_data(self),
         };
 
         if incoming_data.is_none() {
+            println!("---------ISR called but no data.---------");
             return;
         }
 
@@ -146,6 +149,10 @@ impl NetDevice {
             }
         }
 
+        println!(
+            "=============ISR done: received protocol type: {:x?}.===========",
+            proto_type
+        );
         raise(SIGUSR1).unwrap();
     }
 }

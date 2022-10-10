@@ -2,6 +2,7 @@ use std::{collections::HashMap, convert::TryInto, sync::Arc, time::SystemTime};
 
 use super::ip::{IPAdress, IPInterface, IPRoute, IP_ADDR_LEN};
 use super::ProtocolType;
+use crate::protocols::ip::ip_addr_to_str;
 use crate::{
     devices::{ethernet::ETH_ADDR_LEN, NetDevice, NetDeviceType},
     net::NetInterfaceFamily,
@@ -112,7 +113,9 @@ pub fn arp_request(
         target_proto_addr: target_ip.to_le_bytes(),
     };
     let data = unsafe { to_u8_slice::<ArpMessage>(&request_msg) };
-    println!("Sending ARP request for IP: {target_ip}");
+    let ip_str = ip_addr_to_str(target_ip);
+    println!("Sending ARP request for IP: {ip_str}");
+    println!("ARP data: {:x?}", data);
     device.transmit(
         ProtocolType::Arp,
         data.to_vec(),
@@ -149,6 +152,9 @@ pub fn arp_reply(
     };
 
     let data = unsafe { to_u8_slice::<ArpMessage>(&reply_msg) };
+    let ip_str = ip_addr_to_str(target_ip);
+    println!("Sending ARP reply to IP: {ip_str}");
+    println!("ARP data: {:x?}", data);
     device.transmit(
         ProtocolType::Arp,
         data.to_vec(),
@@ -166,30 +172,48 @@ pub fn input(
 ) -> Result<(), ()> {
     let msg = unsafe { bytes_to_struct::<ArpMessage>(data) };
 
-    if msg.header.hw_addr_space != ARP_HW_SPACE_ETHER
+    if be_to_le_u16(msg.header.hw_addr_space) != ARP_HW_SPACE_ETHER
         || msg.header.hw_addr_len as usize != ETH_ADDR_LEN
     {
+        let hw_addr_spc = msg.header.hw_addr_space;
+        println!(
+            "Unexpected values. HW address space: {:x?}  and HW address length: {:x?}",
+            hw_addr_spc, msg.header.hw_addr_len
+        );
         return Err(());
     }
-    if msg.header.proto_addr_space != ARP_PROTO_SPACE_IP
+    if be_to_le_u16(msg.header.proto_addr_space) != ARP_PROTO_SPACE_IP
         || msg.header.proto_addr_len as usize != IP_ADDR_LEN
     {
+        let proto_addr_spc = msg.header.proto_addr_space;
+        println!(
+            "Unexpected values. Protocol address space: {:x?} and Protocol address length: {:x?}",
+            proto_addr_spc, msg.header.proto_addr_len
+        );
+
         return Err(());
     }
 
     let target_ip = unsafe { bytes_to_struct::<u32>(&msg.target_proto_addr) };
     let interface = device.get_interface(NetInterfaceFamily::IP).unwrap();
     if interface.unicast != target_ip {
-        println!("ARP Input: target IP: {target_ip} not matching with interface unicast IP.");
+        let target_ip_str = ip_addr_to_str(target_ip);
+        let unicast_ip_str = ip_addr_to_str(interface.unicast);
+        println!("ARP Input: target IP: {target_ip_str} not matching with interface unicast IP: {unicast_ip_str}");
     } else {
         // Update or insert ARP Table with sender addresses
         let sender_ip = unsafe { bytes_to_struct::<u32>(&msg.sender_proto_addr) };
         arp_table.update(sender_ip, msg.sender_hw_addr);
-        println!("ARP resolved for IP: {sender_ip}");
+        let ip_str = ip_addr_to_str(sender_ip);
+        println!(
+            "ARP received for IP: {ip_str} HW Addr is {:x?}",
+            msg.sender_hw_addr
+        );
 
         // Reply in case of ARP Request
         if be_to_le_u16(msg.header.op) == ARP_OP_REQUEST {
             let sender_ip = unsafe { bytes_to_struct::<u32>(&msg.sender_proto_addr) };
+            println!("Replying ARP...");
             return arp_reply(
                 device,
                 interface,
@@ -214,6 +238,8 @@ pub fn arp_resolve(
     }
     // TODO: Check interface family to be IP
     if let Some(hw_addr) = arp_table.get(target_ip) {
+        let ip_str = ip_addr_to_str(target_ip);
+        println!("ARP resolved for IP: {ip_str} HW Addr is {:x?}", hw_addr);
         Ok(Some(hw_addr))
     } else if arp_request(device, interface, target_ip).is_ok() {
         Ok(None)

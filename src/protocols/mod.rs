@@ -5,7 +5,7 @@ use self::{arp::ArpTable, ip::IPRoute};
 use crate::{devices::NetDevice, util::List};
 use std::{collections::VecDeque, sync::Arc};
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum ProtocolType {
     Arp = 0x0806,
     IP = 0x0800,
@@ -84,16 +84,17 @@ impl NetProtocol {
         // let parsed = u32::from_be_bytes(data.as_slice());
         match self.protocol_type {
             ProtocolType::Arp => {
-                println!("Protocol: ARP | Received: {:?}", data);
+                println!("Protocol: ARP | Received: {:02x?}", data);
                 arp::input(data, len, device, arp_table, ip_routes).unwrap();
             }
             ProtocolType::IP => {
-                println!("Protocol: IP | Received: {:?}", data);
+                println!("Protocol: IP | Received: {:x?}", data);
                 ip::input(data, len, device, arp_table, ip_routes).unwrap();
             }
             ProtocolType::Unknown => {
-                println!("Protocol: Unknown | Received: {:?}", data);
+                println!("Protocol: Unknown | Received: {:x?}", data);
             }
         }
+        println!("======Handled an input=======")
     }
 }

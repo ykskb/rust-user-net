@@ -63,16 +63,29 @@ pub fn input(
     arp_table: &mut ArpTable,
     ip_routes: &List<IPRoute>,
 ) -> Result<(), ()> {
+    println!("ICMP data input: {:x?}", data);
+
     let icmp_hdr_size = size_of::<ICMPHeader>();
-    let hdr = unsafe { bytes_to_struct::<ICMPHeader>(data.as_ref()) };
-    let hlen = size_of::<ICMPHeader>();
-    if cksum16(&hdr, hlen, 0) != 0 {
-        return Err(());
-    }
+    let hdr = unsafe { bytes_to_struct::<ICMPHeader>(data) };
+    println!("ICMP type: {:x?}", hdr.icmp_type);
+    // let hlen = size_of::<ICMPHeader>();
+    // if cksum16(&hdr, hlen, 0) != 0 {
+    //     let r = cksum16(&hdr, hlen, 0);
+    //     println!("Checksum failed: {r}");
+    //     return Err(());
+    // }
 
     if hdr.icmp_type == ICMP_TYPE_ECHO {
-        let icmp_data = data[(icmp_hdr_size - 1)..].to_vec();
+        let icmp_data = data[icmp_hdr_size..].to_vec();
+        println!(
+            "data.len {:?} len {:?}, ICMP input Data len: {:?}, icmpheadersize: {:?}",
+            data.len(),
+            len,
+            icmp_data.len(),
+            icmp_hdr_size
+        );
         if dst != iface.unicast {
+            // change if destination is broadcast address
             dst = iface.unicast;
         }
         output(
@@ -81,8 +94,8 @@ pub fn input(
             hdr.values,
             icmp_data,
             len - icmp_hdr_size,
-            src,
             dst,
+            src,
             device,
             arp_table,
             ip_routes,
@@ -111,10 +124,18 @@ pub fn output(
         values,
     };
     // add data after header
-    hdr.check_sum = cksum16(&hdr, hlen, 0);
-    let header_bytes = unsafe { to_u8_slice::<ICMPHeader>(&hdr) }; // add icmp data here
+    let header_bytes = unsafe { to_u8_slice::<ICMPHeader>(&hdr) };
     let mut data = header_bytes.to_vec();
+
     data.append(&mut icmp_data);
+    let check_sum = cksum16(&data, hlen + len, 0);
+    let chk = cksum16(&data, hlen + len, 0);
+    println!("ICMP Checksum: {:x?}", chk);
+    // Update checksum in byte data
+    data[2] = ((check_sum & 0xff00) >> 8) as u8;
+    data[3] = (check_sum & 0xff) as u8;
+    println!("ICMP data len: {:?}", data.len());
+
     super::output(
         IPProtocolType::Icmp,
         data,

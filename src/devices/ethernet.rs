@@ -1,12 +1,16 @@
-use super::{NetDevice, NetDeviceType, DEVICE_FLAG_BROADCAST, DEVICE_FLAG_NEED_ARP};
+use super::{
+    NetDevice, NetDeviceType, DEVICE_FLAG_BROADCAST, DEVICE_FLAG_NEED_ARP, NET_DEVICE_ADDR_LEN,
+};
 use crate::{
     drivers::{pcap, tap, DriverType},
-    interrupt::IRQEntry,
+    interrupt::{self, IRQEntry},
     protocols::ProtocolType,
     util::{be_to_le_u16, bytes_to_struct},
     util::{le_to_be_u16, to_u8_slice},
 };
 use std::{convert::TryInto, mem::size_of};
+
+pub const IRQ_ETHERNET: i32 = interrupt::INTR_IRQ_BASE + 2;
 
 const ETH_HDR_SIZE: usize = 14;
 const ETH_FRAME_MIN: usize = 60; // without FCS
@@ -46,7 +50,7 @@ pub fn open(device: &mut NetDevice) -> Result<(), ()> {
     Ok(())
 }
 
-pub fn read_data(device: &NetDevice) -> Option<(ProtocolType, Vec<u8>, usize)> {
+pub fn read_data(device: &mut NetDevice) -> Option<(ProtocolType, Vec<u8>, usize)> {
     let (len, buf) = match device.driver_type.as_ref().unwrap() {
         DriverType::Tap => tap::read_data(device),
         DriverType::Pcap => pcap::read_data(device),
@@ -61,13 +65,32 @@ pub fn read_data(device: &NetDevice) -> Option<(ProtocolType, Vec<u8>, usize)> {
 
     // Check if address matches with this device.
     if device.address[..ETH_ADDR_LEN] != hdr.dst[..ETH_ADDR_LEN]
-        || ETH_ADDR_BROADCAST != hdr.dst[..ETH_ADDR_LEN]
+        && ETH_ADDR_BROADCAST != hdr.dst[..ETH_ADDR_LEN]
     {
+        println!("Not my route.");
         return None;
     }
+    println!(
+        "Device addr: {:x?} header destination: {:x?}",
+        device.address, hdr.dst
+    );
     let eth_type = be_to_le_u16(hdr.eth_type);
-    let data = (&buf[hdr_len..]).to_vec();
-    Some((ProtocolType::from_u16(eth_type), data, len))
+    let data = (&buf[hdr_len..len]).to_vec();
+    let data_len = len - hdr_len;
+
+    println!(
+        "Eth: received {:?} ({:?}) bytes: {:02x?}",
+        data_len,
+        data.len(),
+        data
+    );
+
+    println!(
+        "READ: eth_type: {:x?} hdr dst: {:x?} hdr src: {:x?}",
+        eth_type, hdr.dst, hdr.src
+    );
+
+    Some((ProtocolType::from_u16(eth_type), data, data_len))
 }
 
 pub fn transmit(
@@ -87,6 +110,7 @@ pub fn transmit(
         eth_type: le_to_be_u16(ether_type as u16),
     };
     let hdr_bytes = unsafe { to_u8_slice::<EthernetHeader>(&hdr) };
+    println!("Output ethernet header: {:x?}", hdr_bytes);
 
     let mut frame: [u8; ETH_FRAME_MAX] = [0; ETH_FRAME_MAX];
     let mut pad_len: usize = 0;
@@ -101,6 +125,13 @@ pub fn transmit(
     }
     let frame_len = hdr_len + data_len + pad_len;
 
+    println!("len {len}, hdrlen: {hdr_len}, datalen: {data_len}, padlen: {pad_len}, framelen: {frame_len}");
+
+    println!(
+        "Transmit: frame length: {frame_len} | bytes: {:02x?}",
+        &frame[..frame_len]
+    );
+
     match device.driver_type.as_ref().unwrap() {
         DriverType::Tap => tap::write_data(device, &frame[..frame_len]),
         DriverType::Pcap => Ok(()),
@@ -108,7 +139,7 @@ pub fn transmit(
 }
 
 pub fn init(i: u8, driver_type: DriverType) -> NetDevice {
-    let irq_entry = IRQEntry::new(0, 0);
+    let irq_entry = IRQEntry::new(IRQ_ETHERNET, 0);
     let mut device = NetDevice::new(
         i,
         NetDeviceType::Ethernet,
@@ -117,6 +148,8 @@ pub fn init(i: u8, driver_type: DriverType) -> NetDevice {
         DEVICE_FLAG_BROADCAST | DEVICE_FLAG_NEED_ARP,
         ETH_HDR_SIZE as u16,
         ETH_ADDR_LEN as u16,
+        [0; NET_DEVICE_ADDR_LEN],
+        [0xff; NET_DEVICE_ADDR_LEN],
         irq_entry,
     );
     device.driver_type = Some(driver_type);

@@ -1,4 +1,4 @@
-use super::{NetDevice, NetDeviceType, IRQ_FLAG_SHARED};
+use super::{NetDevice, NetDeviceType, IRQ_FLAG_SHARED, NET_DEVICE_ADDR_LEN};
 use crate::{interrupt, protocols::ProtocolType};
 use signal_hook::low_level::raise;
 use std::sync::Arc;
@@ -32,6 +32,8 @@ pub fn init(i: u8) -> NetDevice {
         super::DEVICE_FLAG_LOOPBACK,
         0,
         0,
+        [0; NET_DEVICE_ADDR_LEN],
+        [0; NET_DEVICE_ADDR_LEN],
         irq_entry,
     )
 }

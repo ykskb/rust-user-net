@@ -31,7 +31,7 @@ fn main() -> Result<(), Error> {
     // Interrupt thread
     println!("Starting signal receiver thread...");
     for info in &mut signals {
-        eprintln!("Received a signal {:?}", info);
+        eprintln!("========== Received a signal {:?}\n", info);
         match info.signal {
             SIGHUP => {}
             SIGUSR1 => {

@@ -205,6 +205,7 @@ pub fn input(
         let sender_ip = unsafe { bytes_to_struct::<u32>(&msg.sender_proto_addr) };
         arp_table.update(sender_ip, msg.sender_hw_addr);
         let ip_str = ip_addr_to_str(sender_ip);
+
         println!(
             "ARP received for IP: {ip_str} HW Addr is {:x?}",
             msg.sender_hw_addr

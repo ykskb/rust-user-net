@@ -107,7 +107,7 @@ impl ProtoStackSetup {
             let mut device_mutex = device.lock().unwrap();
             let ip_routes = routes.lock().unwrap();
             // for test
-            let do_test = false;
+            let do_test = true;
             if do_test {
                 let mut arp_mutex = arp_table.lock().unwrap();
                 for d in device_mutex.iter_mut() {

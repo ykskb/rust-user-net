@@ -18,3 +18,8 @@ echo ""
 # POSTROUTING: alter packets as they leave firewall's external device.
 echo "Appending POSTROUTING rule into NAT table: mask source to 192.0.2.0/24 and output to interface: eth0..."
 sudo iptables -t nat -A POSTROUTING -s 192.0.2.0/24 -o wlp0s20f3 -j MASQUERADE
+
+# # Revert
+# sudo iptables -D FORWARD -o tap0 -j ACCEPT
+# sudo iptables -D FORWARD -i tap0 -j ACCEPT
+# sudo iptables -t nat -D POSTROUTING -s 192.0.2.0/24 -o wlp0s20f3 -j MASQUERADE

@@ -181,7 +181,7 @@ fn create_ip_header(
         opts: [],
     };
     let header_bytes = unsafe { to_u8_slice(&header) };
-    header.check_sum = cksum16(header_bytes, hlen, 0);
+    header.check_sum = le_to_be_u16(cksum16(header_bytes, hlen, 0));
     header
 }
 
@@ -199,15 +199,13 @@ pub fn output(
         return Err(());
     }
     let route = route_lookup.unwrap();
-    let ip_str = ip_addr_to_str(dst);
-    println!(
-        "Destination: {ip_str}, Matched route: {:?}",
-        ip_addr_to_str(route.next_hop)
-    );
+
     if src != IP_ADDR_ANY && src != route.interface.unicast {
-        let unicast = ip_addr_to_str(route.interface.unicast);
-        let src_ip = ip_addr_to_str(src);
-        println!("Source address: {src_ip} not matching with interface unicast: {unicast}");
+        println!(
+            "Source address: {:?} not matching with interface unicast: {:?}",
+            ip_addr_to_str(src),
+            ip_addr_to_str(route.interface.unicast)
+        );
         return Err(());
     }
     let next_hop = if route.next_hop != IP_ADDR_ANY {
@@ -225,8 +223,9 @@ pub fn output(
         &data,
         id_manager.generate_id(),
     );
+
     println!(
-        "IP Header destination: {:?}, src: {:?}, nexthop: {:?}",
+        "IP output: header destination = {:?} src = {:?} nexthop = {:?}",
         ip_addr_to_str(header.dst),
         ip_addr_to_str(header.src),
         ip_addr_to_str(next_hop)
@@ -236,7 +235,6 @@ pub fn output(
     let mut ip_data = header_bytes.to_vec();
     ip_data.append(&mut data);
     let ip_data_len = ip_data.len();
-    println!("IP: data len: {ip_data_len}");
 
     let mut hw_addr: [u8; ETH_ADDR_LEN] = [0; ETH_ADDR_LEN];
     if device.flags & DEVICE_FLAG_NEED_ARP > 0 {
@@ -272,11 +270,6 @@ fn check_ip_header(header: &IPHeader, data_len: usize, header_len: usize) -> Res
         return Err(());
     }
     let header_bytes = unsafe { to_u8_slice(header) };
-    println!(
-        "IP header len: {:?} data len: {:?}",
-        header_len,
-        header_bytes.len()
-    );
     if cksum16(header_bytes, header_len, 0) != 0 {
         println!("IP input: checksum error.");
         return Err(());
@@ -296,7 +289,6 @@ pub fn input(
     arp_table: &mut ArpTable,
     ip_routes: &List<IPRoute>,
 ) -> Result<(), ()> {
-    println!("IP input: data.len: {:?}, len: {len}", data.len());
     if len < IP_HEADER_MIN_SIZE {
         panic!("IP input: data is too short.")
     }
@@ -305,6 +297,11 @@ pub fn input(
     if let Err(_e) = check_ip_header(&header, len, header_len) {
         return Err(());
     }
+    println!(
+        "IP input src: {:?} dst: {:?}",
+        ip_addr_to_str(header.src),
+        ip_addr_to_str(header.dst)
+    );
     let interface_lookup = device.get_interface(NetInterfaceFamily::IP);
     if let Some(interface) = interface_lookup {
         if interface.unicast != header.dst {

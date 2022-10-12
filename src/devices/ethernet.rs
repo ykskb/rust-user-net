@@ -70,24 +70,20 @@ pub fn read_data(device: &mut NetDevice) -> Option<(ProtocolType, Vec<u8>, usize
         println!("Not my route.");
         return None;
     }
+
     println!(
-        "Device addr: {:x?} header destination: {:x?}",
-        device.address, hdr.dst
+        "Ethernet input: buffer = {:?} bytes data = {:02x?}",
+        len,
+        &buf[..len]
     );
+
     let eth_type = be_to_le_u16(hdr.eth_type);
     let data = (&buf[hdr_len..len]).to_vec();
     let data_len = len - hdr_len;
 
     println!(
-        "Eth: received {:?} ({:?}) bytes: {:02x?}",
-        data_len,
-        data.len(),
-        data
-    );
-
-    println!(
-        "READ: eth_type: {:x?} hdr dst: {:x?} hdr src: {:x?}",
-        eth_type, hdr.dst, hdr.src
+        "Device addr: {:x?} Eth header destination: {:x?} Eth header source: {:x?} Eth type: {:x?}",
+        device.address, hdr.dst, hdr.src, eth_type
     );
 
     Some((ProtocolType::from_u16(eth_type), data, data_len))
@@ -110,7 +106,6 @@ pub fn transmit(
         eth_type: le_to_be_u16(ether_type as u16),
     };
     let hdr_bytes = unsafe { to_u8_slice::<EthernetHeader>(&hdr) };
-    println!("Output ethernet header: {:x?}", hdr_bytes);
 
     let mut frame: [u8; ETH_FRAME_MAX] = [0; ETH_FRAME_MAX];
     let mut pad_len: usize = 0;
@@ -125,10 +120,8 @@ pub fn transmit(
     }
     let frame_len = hdr_len + data_len + pad_len;
 
-    println!("len {len}, hdrlen: {hdr_len}, datalen: {data_len}, padlen: {pad_len}, framelen: {frame_len}");
-
     println!(
-        "Transmit: frame length: {frame_len} | bytes: {:02x?}",
+        "Transmit: frame length: {frame_len} (data: {len} + header: {hdr_len} + pad: {pad_len}) | bytes: {:02x?}",
         &frame[..frame_len]
     );
 

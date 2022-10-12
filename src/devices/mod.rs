@@ -136,7 +136,7 @@ impl NetDevice {
         };
 
         if incoming_data.is_none() {
-            println!("---------ISR called but no data.---------");
+            println!("__________ISR called but no data\n");
             return;
         }
 
@@ -150,7 +150,7 @@ impl NetDevice {
         }
 
         println!(
-            "=============ISR done: received protocol type: {:x?}.===========",
+            "__________ISR done: received protocol type: {:x?}\n",
             proto_type
         );
         raise(SIGUSR1).unwrap();

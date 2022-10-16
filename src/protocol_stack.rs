@@ -3,6 +3,7 @@ use crate::devices::NetDeviceType;
 use crate::protocols::arp::ArpTable;
 use crate::protocols::ip::icmp;
 use crate::protocols::ip::udp;
+use crate::protocols::ip::IPHeaderIdManager;
 use crate::protocols::ip::{IPAdress, IPEndpoint, IPRoute};
 use crate::protocols::NetProtocol;
 use crate::protocols::ProtocolType;
@@ -11,6 +12,7 @@ use crate::util::List;
 pub struct ProtocolContexts {
     pub arp_table: ArpTable,
     pub ip_routes: List<IPRoute>,
+    pub ip_id_manager: IPHeaderIdManager,
 }
 
 pub struct ProtocolStack {
@@ -27,6 +29,7 @@ impl ProtocolStack {
         let contexts = ProtocolContexts {
             arp_table: ArpTable::new(),
             ip_routes,
+            ip_id_manager: IPHeaderIdManager::new(),
         };
 
         ProtocolStack {
@@ -108,8 +111,7 @@ impl ProtocolStack {
                     data,
                     data_len,
                     d,
-                    &mut self.contexts.arp_table,
-                    &self.contexts.ip_routes,
+                    &mut self.contexts,
                 );
                 break;
             }

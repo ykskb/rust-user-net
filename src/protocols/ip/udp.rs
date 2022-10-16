@@ -1,9 +1,7 @@
-use super::{
-    IPAdress, IPEndpoint, IPInterface, IPProtocolType, IPRoute, IP_ADDR_ANY, IP_PAYLOAD_MAX_SIZE,
-};
+use super::{IPAdress, IPEndpoint, IPInterface, IPProtocolType, IP_ADDR_ANY, IP_PAYLOAD_MAX_SIZE};
 use crate::{
     devices::NetDevice,
-    protocols::arp::ArpTable,
+    protocol_stack::ProtocolContexts,
     util::{bytes_to_struct, cksum16, le_to_be_u16, to_u8_slice, List},
 };
 use std::{collections::VecDeque, mem::size_of};
@@ -109,7 +107,7 @@ pub fn input(
         return Err(());
     }
 
-    println!(
+    let pcb = println!(
         "UDP input: source port = {:?} destination port: {:?}",
         header.src_port, header.dst_port
     );
@@ -123,8 +121,7 @@ pub fn output(
     mut udp_data: Vec<u8>,
     len: usize,
     device: &mut NetDevice,
-    arp_table: &mut ArpTable,
-    ip_routes: &List<IPRoute>,
+    contexts: &mut ProtocolContexts,
 ) {
     println!("UDP outpu");
     let udp_hdr_size = size_of::<UdpHeader>();
@@ -163,8 +160,7 @@ pub fn output(
         src.address,
         dst.address,
         device,
-        arp_table,
-        ip_routes,
+        contexts,
     )
     .unwrap();
 }

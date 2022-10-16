@@ -122,14 +122,5 @@ pub fn output(
     data[2] = ((check_sum & 0xff00) >> 8) as u8;
     data[3] = (check_sum & 0xff) as u8;
 
-    super::output(
-        IPProtocolType::Icmp,
-        data,
-        src,
-        dst,
-        device,
-        &mut contexts.arp_table,
-        &contexts.ip_routes,
-    )
-    .unwrap();
+    super::output(IPProtocolType::Icmp, data, src, dst, device, contexts).unwrap();
 }

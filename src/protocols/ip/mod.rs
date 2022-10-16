@@ -2,7 +2,7 @@ pub mod icmp;
 pub mod tcp;
 pub mod udp;
 
-use super::arp::{arp_resolve, ArpTable};
+use super::arp::arp_resolve;
 use crate::{
     devices::{ethernet::ETH_ADDR_LEN, NetDevice, DEVICE_FLAG_NEED_ARP},
     net::{NetInterface, NetInterfaceFamily},
@@ -155,13 +155,13 @@ pub struct IPHeader {
     opts: [u8; 0],
 }
 
-pub struct IPHeaderIdGenerator {
+pub struct IPHeaderIdManager {
     id_mtx: Mutex<u16>,
 }
 
-impl IPHeaderIdGenerator {
-    pub fn new() -> IPHeaderIdGenerator {
-        IPHeaderIdGenerator {
+impl IPHeaderIdManager {
+    pub fn new() -> IPHeaderIdManager {
+        IPHeaderIdManager {
             id_mtx: Mutex::new(128),
         }
     }
@@ -210,10 +210,9 @@ pub fn output(
     src: IPAdress,
     dst: IPAdress,
     device: &mut NetDevice,
-    arp_table: &mut ArpTable,
-    routes: &List<IPRoute>,
+    contexts: &mut ProtocolContexts,
 ) -> Result<(), ()> {
-    let route_lookup = lookup_ip_route(routes, dst);
+    let route_lookup = lookup_ip_route(&contexts.ip_routes, dst);
     if route_lookup.is_none() {
         return Err(());
     }
@@ -233,14 +232,12 @@ pub fn output(
         dst
     };
 
-    let mut id_manager = IPHeaderIdGenerator::new();
-
     let header = create_ip_header(
         ip_proto,
         route.interface.unicast,
         dst,
         &data,
-        id_manager.generate_id(),
+        contexts.ip_id_manager.generate_id(),
     );
 
     println!(
@@ -260,7 +257,12 @@ pub fn output(
         if dst == route.interface.broadcast || dst == IP_ADDR_BROADCAST {
             hw_addr = device.broadcast[..ETH_ADDR_LEN + 1].try_into().unwrap();
         } else {
-            let arp = arp_resolve(device, route.interface.clone(), arp_table, next_hop);
+            let arp = arp_resolve(
+                device,
+                route.interface.clone(),
+                &mut contexts.arp_table,
+                next_hop,
+            );
             if let Ok(result) = arp {
                 if result.is_none() {
                     println!("Waiting for ARP reply...");
@@ -409,7 +411,7 @@ mod test {
         util::{cksum16, le_to_be_u16, to_u8_slice},
     };
 
-    use super::{IPHeader, IPHeaderIdGenerator, IPProtocolType, IP_VERSION_4};
+    use super::{IPHeader, IPHeaderIdManager, IPProtocolType, IP_VERSION_4};
 
     #[test]
     fn test_ip_header() {
@@ -417,7 +419,7 @@ mod test {
         let hlen = size_of::<IPHeader>();
         let len = size_of_val(&data);
         let total = hlen as u16 + len as u16;
-        let mut id_manager = IPHeaderIdGenerator::new();
+        let mut id_manager = IPHeaderIdManager::new();
         let id = id_manager.generate_id();
 
         let hdr = IPHeader {

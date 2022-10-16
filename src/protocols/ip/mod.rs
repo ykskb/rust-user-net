@@ -6,6 +6,7 @@ use super::arp::{arp_resolve, ArpTable};
 use crate::{
     devices::{ethernet::ETH_ADDR_LEN, NetDevice, DEVICE_FLAG_NEED_ARP},
     net::{NetInterface, NetInterfaceFamily},
+    protocol_stack::ProtocolContexts,
     util::{be_to_le_u16, be_to_le_u32, bytes_to_struct, cksum16, le_to_be_u16, to_u8_slice, List},
 };
 use std::{
@@ -16,11 +17,29 @@ use std::{
 
 pub type IPAdress = u32;
 
-const IP_VERSION_4: u8 = 4;
 pub const IP_ADDR_LEN: usize = 4;
+const IP_MAX_SIZE: usize = u16::MAX as usize;
 const IP_HEADER_MIN_SIZE: usize = 20;
+const IP_PAYLOAD_MAX_SIZE: usize = IP_MAX_SIZE - IP_HEADER_MIN_SIZE;
+
+const IP_VERSION_4: u8 = 4;
+
 const IP_ADDR_ANY: IPAdress = 0x00000000; // 0.0.0.0
 const IP_ADDR_BROADCAST: IPAdress = 0xffffffff; // 255.255.255.255
+
+pub struct IPEndpoint {
+    pub address: IPAdress,
+    pub port: u16,
+}
+
+impl IPEndpoint {
+    pub fn new(addr: &str, port: u16) -> IPEndpoint {
+        IPEndpoint {
+            address: ip_addr_to_bytes(addr).unwrap(),
+            port: le_to_be_u16(port),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct IPInterface {
@@ -286,8 +305,7 @@ pub fn input(
     data: &[u8],
     len: usize,
     device: &mut NetDevice,
-    arp_table: &mut ArpTable,
-    ip_routes: &List<IPRoute>,
+    contexts: &mut ProtocolContexts,
 ) -> Result<(), ()> {
     if len < IP_HEADER_MIN_SIZE {
         panic!("IP input: data is too short.")
@@ -316,16 +334,22 @@ pub fn input(
                     header.src,
                     header.dst,
                     device,
-                    interface.as_ref(),
-                    arp_table,
-                    ip_routes,
+                    &interface,
+                    contexts,
                 );
             }
             IPProtocolType::Tcp => {
                 return tcp::input();
             }
             IPProtocolType::Udp => {
-                return udp::input();
+                return udp::input(
+                    sub_data,
+                    len - header_len,
+                    header.src,
+                    header.dst,
+                    device,
+                    &interface,
+                );
             }
             IPProtocolType::Unknown => {
                 return Ok(());

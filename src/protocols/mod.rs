@@ -1,8 +1,7 @@
 pub mod arp;
 pub mod ip;
 
-use self::{arp::ArpTable, ip::IPRoute};
-use crate::{devices::NetDevice, util::List};
+use crate::{devices::NetDevice, protocol_stack::ProtocolContexts, util::List};
 use std::{collections::VecDeque, sync::Arc};
 
 #[derive(PartialEq, Debug)]
@@ -51,9 +50,9 @@ impl NetProtocol {
     /// Calls input handler for all data till a queue is empty.
     pub fn handle_input(
         &mut self,
+        // proto_stack: &mut ProtocolStack,
         devices: &mut List<NetDevice>,
-        arp_table: &mut ArpTable,
-        ip_routes: &List<IPRoute>,
+        contexts: &mut ProtocolContexts,
     ) {
         loop {
             if self.input_head.is_empty() {
@@ -63,9 +62,10 @@ impl NetProtocol {
             let data = proto_data.data.unwrap();
             let len = proto_data.len;
 
+            // let devices = proto_stack.devices.lock().unwrap();
             for device in devices.iter_mut() {
                 if device.irq_entry.irq == proto_data.irq {
-                    self.input(data.as_slice(), len, device, arp_table, ip_routes);
+                    self.input(data.as_slice(), len, device, contexts);
                     break;
                 }
             }
@@ -78,18 +78,17 @@ impl NetProtocol {
         data: &[u8],
         len: usize,
         device: &mut NetDevice,
-        arp_table: &mut ArpTable,
-        ip_routes: &List<IPRoute>,
+        contexts: &mut ProtocolContexts,
     ) {
         // let parsed = u32::from_be_bytes(data.as_slice());
         match self.protocol_type {
             ProtocolType::Arp => {
                 println!("Handling protocol: ARP | Received: {:02x?}", data);
-                arp::input(data, len, device, arp_table, ip_routes).unwrap();
+                arp::input(data, len, device, contexts).unwrap();
             }
             ProtocolType::IP => {
                 println!("Handling protocol: IP | Received: {:02x?}", data);
-                ip::input(data, len, device, arp_table, ip_routes).unwrap();
+                ip::input(data, len, device, contexts).unwrap();
             }
             ProtocolType::Unknown => {
                 println!("Protocol: Unknown | Received: {:x?}", data);

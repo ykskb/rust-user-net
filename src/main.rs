@@ -1,3 +1,4 @@
+mod app;
 mod devices;
 mod drivers;
 mod interrupt;
@@ -6,9 +7,9 @@ mod protocol_stack;
 mod protocols;
 mod util;
 
+use crate::app::NetApp;
 use crate::devices::ethernet::IRQ_ETHERNET;
 use crate::devices::loopback::IRQ_LOOPBACK;
-use crate::protocol_stack::ProtoStackSetup;
 use signal_hook::consts::signal::*;
 use signal_hook::consts::TERM_SIGNALS;
 use signal_hook::iterator::exfiltrator::origin::WithOrigin;
@@ -25,8 +26,8 @@ fn main() -> Result<(), Error> {
     let (sender, receiver) = mpsc::channel();
 
     // Protocol stack start
-    let proto_stack = ProtoStackSetup::new();
-    let app_join = proto_stack.run(receiver);
+    let mut app = NetApp::new();
+    let app_join = app.run(receiver);
 
     // Interrupt thread
     println!("Starting signal receiver thread...");
@@ -35,14 +36,14 @@ fn main() -> Result<(), Error> {
         match info.signal {
             SIGHUP => {}
             SIGUSR1 => {
-                proto_stack.handle_protocol();
+                app.handle_protocol();
             }
             sig => {
                 if TERM_SIGNALS.contains(&sig) {
                     eprintln!("Terminating");
                     break;
                 }
-                proto_stack.handle_irq(sig);
+                app.handle_irq(sig);
             }
         }
     }

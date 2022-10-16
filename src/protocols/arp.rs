@@ -1,13 +1,13 @@
-use std::{collections::HashMap, convert::TryInto, sync::Arc, time::SystemTime};
-
-use super::ip::{IPAdress, IPInterface, IPRoute, IP_ADDR_LEN};
+use super::ip::{IPAdress, IPInterface, IP_ADDR_LEN};
 use super::ProtocolType;
+use crate::protocol_stack::ProtocolContexts;
 use crate::protocols::ip::ip_addr_to_str;
 use crate::{
     devices::{ethernet::ETH_ADDR_LEN, NetDevice, NetDeviceType},
     net::NetInterfaceFamily,
     util::{be_to_le_u16, bytes_to_struct, le_to_be_u16, to_u8_slice, List},
 };
+use std::{collections::HashMap, convert::TryInto, sync::Arc, time::SystemTime};
 
 const ARP_HW_SPACE_ETHER: u16 = 0x0001;
 const ARP_PROTO_SPACE_IP: u16 = 0x0800;
@@ -167,8 +167,7 @@ pub fn input(
     data: &[u8],
     _len: usize,
     device: &mut NetDevice,
-    arp_table: &mut ArpTable,
-    _ip_routes: &List<IPRoute>,
+    contexts: &mut ProtocolContexts,
 ) -> Result<(), ()> {
     let msg = unsafe { bytes_to_struct::<ArpMessage>(data) };
 
@@ -197,13 +196,15 @@ pub fn input(
     let target_ip = unsafe { bytes_to_struct::<u32>(&msg.target_proto_addr) };
     let interface = device.get_interface(NetInterfaceFamily::IP).unwrap();
     if interface.unicast != target_ip {
-        let target_ip_str = ip_addr_to_str(target_ip);
-        let unicast_ip_str = ip_addr_to_str(interface.unicast);
-        println!("ARP Input: target IP: {target_ip_str} not matching with interface unicast IP: {unicast_ip_str}");
+        println!(
+            "ARP Input: target IP: {:?} not matching with interface unicast IP: {:?}",
+            ip_addr_to_str(target_ip),
+            ip_addr_to_str(interface.unicast)
+        );
     } else {
         // Update or insert ARP Table with sender addresses
         let sender_ip = unsafe { bytes_to_struct::<u32>(&msg.sender_proto_addr) };
-        arp_table.update(sender_ip, msg.sender_hw_addr);
+        contexts.arp_table.update(sender_ip, msg.sender_hw_addr);
         let ip_str = ip_addr_to_str(sender_ip);
 
         println!(

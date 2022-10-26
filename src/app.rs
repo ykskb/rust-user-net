@@ -2,6 +2,7 @@ use crate::devices::ethernet;
 use crate::devices::loopback;
 use crate::protocol_stack::ProtocolStack;
 use crate::protocols::ip::ip_addr_to_bytes;
+use crate::protocols::ip::IPEndpoint;
 use crate::protocols::ip::{IPInterface, IPRoute};
 use crate::util::le_to_be_u32;
 use std::process;
@@ -93,17 +94,17 @@ impl NetApp {
                 // 0x00, 0x00, 0x01, 0x7f, 0x00, 0x00, 0x01, 0x08, 0x00, 0x35, 0x64, 0x00, 0x80,
                 // 0x00, 0x01,
                 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x30, 0x21, 0x40, 0x23, 0x24,
-                0x25, 0x5e, 0x26, 0x2a, 0x28, 0x29,
+                0x25, 0x5e, 0x26, 0x2a, 0x28, 0x29, 0x41, 0x42, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67,
+                0x68, 0x69,
             ];
             let icmp_type_echo: u8 = 8;
             let ip_any = 0;
             let dst = ip_addr_to_bytes("8.8.8.8").unwrap();
 
-            proto_stack.test_icmp(icmp_type_echo, values, data, ip_any, dst);
+            // proto_stack.test_icmp(icmp_type_echo, values, data, ip_any, dst);
 
-            // let src_endpoint = IPEndpoint::new("0.0.0.0", 7);
-            // let dst_endpoint = IPEndpoint::new("8.8.8.8", 7);
-            // proto_stack.test_udp(src_endpoint, dst_endpoint, data);
+            let dst_endpoint = IPEndpoint::new_from_str("192.0.2.1", 10007);
+            proto_stack.test_udp_send_to(dst_endpoint, data);
 
             drop(proto_stack);
         })

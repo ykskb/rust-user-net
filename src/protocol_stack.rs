@@ -3,6 +3,7 @@ use crate::devices::NetDeviceType;
 use crate::protocols::arp::ArpTable;
 use crate::protocols::ip::icmp;
 use crate::protocols::ip::udp;
+use crate::protocols::ip::udp::UdpPcbs;
 use crate::protocols::ip::IPHeaderIdManager;
 use crate::protocols::ip::{IPAdress, IPEndpoint, IPRoute};
 use crate::protocols::NetProtocol;
@@ -13,6 +14,7 @@ pub struct ProtocolContexts {
     pub arp_table: ArpTable,
     pub ip_routes: List<IPRoute>,
     pub ip_id_manager: IPHeaderIdManager,
+    pub udp_pcbs: UdpPcbs,
 }
 
 pub struct ProtocolStack {
@@ -30,6 +32,7 @@ impl ProtocolStack {
             arp_table: ArpTable::new(),
             ip_routes,
             ip_id_manager: IPHeaderIdManager::new(),
+            udp_pcbs: UdpPcbs::new(),
         };
 
         ProtocolStack {
@@ -101,18 +104,11 @@ impl ProtocolStack {
         }
     }
 
-    pub fn test_udp(&mut self, src_endpoint: IPEndpoint, dst_endpoint: IPEndpoint, data: Vec<u8>) {
-        let data_len = data.len();
+    pub fn test_udp_send_to(&mut self, dst: IPEndpoint, data: Vec<u8>) {
         for d in self.devices.iter_mut() {
             if d.device_type == NetDeviceType::Ethernet {
-                udp::output(
-                    src_endpoint,
-                    dst_endpoint,
-                    data,
-                    data_len,
-                    d,
-                    &mut self.contexts,
-                );
+                let soc = udp::open(&mut self.contexts.udp_pcbs);
+                udp::send_to(soc, data, dst, d, &mut self.contexts);
                 break;
             }
         }

@@ -33,9 +33,16 @@ pub struct IPEndpoint {
 }
 
 impl IPEndpoint {
-    pub fn new(addr: &str, port: u16) -> IPEndpoint {
+    pub fn new(addr: IPAdress, port: u16) -> IPEndpoint {
         IPEndpoint {
-            address: ip_addr_to_bytes(addr).unwrap(),
+            address: addr,
+            port: le_to_be_u16(port),
+        }
+    }
+
+    pub fn new_from_str(addr_str: &str, port: u16) -> IPEndpoint {
+        IPEndpoint {
+            address: ip_addr_to_bytes(addr_str).unwrap(),
             port: le_to_be_u16(port),
         }
     }
@@ -351,6 +358,7 @@ pub fn input(
                     header.dst,
                     device,
                     &interface,
+                    contexts,
                 );
             }
             IPProtocolType::Unknown => {

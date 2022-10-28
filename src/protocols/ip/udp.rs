@@ -4,13 +4,16 @@ use super::{
 };
 use crate::{
     devices::NetDevice,
-    protocol_stack::ProtocolContexts,
-    util::{bytes_to_struct, cksum16, le_to_be_u16, to_u8_slice},
+    protocol_stack::{ProtocolContexts, ProtocolStack},
+    util::{be_to_le_u16, bytes_to_struct, cksum16, le_to_be_u16, to_u8_slice},
 };
 use std::{
     collections::VecDeque,
     mem::size_of,
-    sync::mpsc::{self, Sender},
+    sync::{
+        mpsc::{self, Sender},
+        Arc, Mutex,
+    },
 };
 
 const UDP_PCB_COUNT: usize = 16;
@@ -45,7 +48,7 @@ enum UdpPcbState {
 pub struct UdpPcb {
     state: UdpPcbState,
     local_endpoint: IPEndpoint,
-    sender: Option<Sender<()>>,
+    pub sender: Option<Sender<bool>>,
     data_entries: VecDeque<UdpDataEntry>,
 }
 
@@ -87,7 +90,7 @@ impl UdpPcbs {
 
         entry.state = UdpPcbState::Closing;
         if entry.sender.is_some() {
-            entry.sender.as_ref().unwrap().send(()).unwrap();
+            entry.sender.as_ref().unwrap().send(false).unwrap();
         }
 
         entry.state = UdpPcbState::Free;
@@ -133,6 +136,14 @@ impl UdpPcbs {
         }
         false
     }
+
+    pub fn close_sockets(&mut self) {
+        for pcb in self.entries.iter() {
+            if pcb.sender.is_some() {
+                pcb.sender.as_ref().unwrap().send(false).unwrap();
+            }
+        }
+    }
 }
 
 pub fn input(
@@ -144,35 +155,44 @@ pub fn input(
     iface: &IPInterface,
     contexts: &mut ProtocolContexts,
 ) -> Result<(), ()> {
+    println!("UDP: received data {:02x?}", data);
+
     let udp_hdr_size = size_of::<UdpHeader>();
     let header = unsafe { bytes_to_struct::<UdpHeader>(data) };
+
+    let header_len = be_to_le_u16(header.len);
+    if header_len != len as u16 {
+        panic!(
+            "UDP: data length = {:?} and header length = {:?} do not match.",
+            len, header_len
+        );
+    }
     let pseudo_header = PseudoHeader {
         src,
         dst,
         zero: 0,
         protocol: IPProtocolType::Udp as u8,
-        len: le_to_be_u16(len as u16),
+        len: header.len,
     };
     let pseudo_hdr_bytes = unsafe { to_u8_slice(&pseudo_header) };
-    let pseudo_sum = cksum16(pseudo_hdr_bytes, pseudo_hdr_bytes.len(), 0);
-    let sum = cksum16(data, len, !pseudo_sum as u32);
+    let pseudo_sum = !cksum16(pseudo_hdr_bytes, pseudo_hdr_bytes.len(), 0);
+    let sum = cksum16(data, len, pseudo_sum as u32);
     if sum != 0 {
         println!("UDP input checksum failure: value = {sum}");
         return Err(());
     }
 
     let pcb_opt = contexts.udp_pcbs.get_by_host(dst, header.dst_port);
+    let dst_port = header.dst_port;
     if pcb_opt.is_none() {
-        println!(
-            "There is no connection for IP: {:?}:{:?}",
-            dst, header.dst_port
-        );
+        println!("There is no connection for IP: {:?}:{:?}", dst, dst_port);
         return Err(());
     }
 
     println!(
         "UDP input: source port = {:?} destination port: {:?}",
-        header.src_port, header.dst_port
+        be_to_le_u16(header.src_port),
+        be_to_le_u16(header.dst_port)
     );
 
     let pcb = pcb_opt.unwrap();
@@ -189,7 +209,7 @@ pub fn input(
     pcb.data_entries.push_back(data_entry);
 
     let sender = pcb.sender.as_ref().unwrap();
-    sender.send(()).unwrap();
+    sender.send(true).unwrap();
 
     Ok(())
 }
@@ -264,6 +284,7 @@ pub fn bind(pcbs: &mut UdpPcbs, pcb_id: usize, local_endpoint: IPEndpoint) {
             local_endpoint.address, local_endpoint.port
         );
     }
+    println!("UDP: binding host and port...");
     for (i, entry) in pcbs.entries.iter_mut().enumerate() {
         if pcb_id == i {
             entry.local_endpoint = local_endpoint;
@@ -312,24 +333,41 @@ pub fn send_to(
     output(local_endpoint, remote, data, device, contexts)
 }
 
-pub fn receive_from(pcbs: &mut UdpPcbs, pcb_id: usize) -> Option<Vec<u8>> {
-    let pcb = pcbs
-        .get_mut_by_id(pcb_id)
-        .expect("UDP(receive_from): no specified PCB entry.");
-
+pub fn receive_from(pcb_id: usize, pstack_arc: Arc<Mutex<ProtocolStack>>) -> Option<Vec<u8>> {
     let (sender, receiver) = mpsc::channel();
-    pcb.sender = Some(sender);
+    {
+        let pstack = &mut pstack_arc.lock().unwrap();
+        let pcb = pstack
+            .contexts
+            .udp_pcbs
+            .get_mut_by_id(pcb_id)
+            .expect("UDP(receive_from): no specified PCB entry.");
+
+        pcb.sender = Some(sender);
+    }
 
     loop {
-        receiver.recv().unwrap();
-        if pcb.state != UdpPcbState::Open {
-            println!("UDP(receive_from): PCB got closed.");
+        if !receiver.recv().unwrap() {
             return None;
         }
-        let data_entry = pcb.data_entries.pop_front();
-        if data_entry.is_some() {
-            let entry = data_entry.unwrap();
-            return Some(entry.data);
+
+        {
+            let mut pstack = pstack_arc.lock().unwrap();
+            let pcb = pstack
+                .contexts
+                .udp_pcbs
+                .get_mut_by_id(pcb_id)
+                .expect("UDP: receive_from got no specified PCB entry.");
+
+            if pcb.state != UdpPcbState::Open {
+                println!("UDP(receive_from): PCB got closed.");
+                return None;
+            }
+            let data_entry = pcb.data_entries.pop_front();
+            if data_entry.is_some() {
+                let entry = data_entry.unwrap();
+                return Some(entry.data);
+            }
         }
     }
 }

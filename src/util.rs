@@ -135,7 +135,7 @@ pub fn cksum16(data: &[u8], len: usize, init: u32) -> u16 {
         i += 2;
     }
     if len > 0 {
-        sum += data[i] as u32
+        sum += ((data[i] as u16) << 8) as u32
     }
     // Add overflowed value
     while (sum >> 16) != 0 {

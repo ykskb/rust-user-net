@@ -50,6 +50,7 @@ fn main() -> Result<(), Error> {
     // App thread termination
     println!("Closing app thread.");
     sender.send(()).unwrap();
+    app.close_sockets();
     app_join.join().unwrap();
     println!("App thread closed.");
     Ok(())

@@ -2,6 +2,7 @@ use crate::devices::ethernet;
 use crate::devices::loopback;
 use crate::protocol_stack::ProtocolStack;
 use crate::protocols::ip::ip_addr_to_bytes;
+use crate::protocols::ip::udp;
 use crate::protocols::ip::IPEndpoint;
 use crate::protocols::ip::{IPInterface, IPRoute};
 use crate::util::le_to_be_u32;
@@ -66,10 +67,18 @@ impl NetApp {
     pub fn run(&self, receiver: mpsc::Receiver<()>) -> JoinHandle<()> {
         let p_stack_arc = self.proto_stack.clone();
 
+        let soc = {
+            let p_stack = &mut p_stack_arc.lock().unwrap();
+            let soc = udp::open(&mut p_stack.contexts.udp_pcbs);
+            let local = IPEndpoint::new_from_str("0.0.0.0", 7);
+            udp::bind(&mut p_stack.contexts.udp_pcbs, soc, local);
+            soc
+        };
+
         thread::spawn(move || loop {
             // initial wait
-            println!("loop sleeping for 2s...");
-            thread::sleep(Duration::from_millis(2000));
+            // println!("loop sleeping for 2s...");
+            // thread::sleep(Duration::from_millis(2000));
 
             // Termination check
             match receiver.try_recv() {
@@ -84,8 +93,6 @@ impl NetApp {
             if !do_test {
                 continue;
             }
-
-            let mut proto_stack = p_stack_arc.lock().unwrap();
 
             let pid = process::id() % u16::MAX as u32;
             let values = le_to_be_u32(pid << 16 | 1);
@@ -103,20 +110,34 @@ impl NetApp {
 
             // proto_stack.test_icmp(icmp_type_echo, values, data, ip_any, dst);
 
-            let dst_endpoint = IPEndpoint::new_from_str("192.0.2.1", 10007);
-            proto_stack.test_udp_send_to(dst_endpoint, data);
+            let remote = IPEndpoint::new_from_str("192.0.2.1", 36511);
 
-            drop(proto_stack);
+            let received = udp::receive_from(soc, p_stack_arc.clone());
+
+            if received.is_some() {
+                println!("Sock num: {soc} Received: {:?}", received.unwrap());
+            }
+
+            // let r = p_stack_arc.try_lock().is_ok();
+            // println!("tried p_stack lock(): {r}");
+
+            // if received.is_some() {
+            //     let mut p_stack = p_stack_arc.lock().unwrap();
+            //     p_stack.test_udp_send_to(remote, received.unwrap());
+            // }
         })
     }
 
+    pub fn close_sockets(&mut self) {
+        let mut pstack = self.proto_stack.lock().unwrap();
+        pstack.contexts.udp_pcbs.close_sockets();
+    }
+
     pub fn handle_protocol(&mut self) {
-        let mut proto_stack = self.proto_stack.lock().unwrap();
-        proto_stack.handle_protocol();
+        self.proto_stack.lock().unwrap().handle_protocol();
     }
 
     pub fn handle_irq(&mut self, irq: i32) {
-        let mut proto_stack = self.proto_stack.lock().unwrap();
-        proto_stack.handle_irq(irq);
+        self.proto_stack.lock().unwrap().handle_irq(irq);
     }
 }

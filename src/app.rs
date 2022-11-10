@@ -150,21 +150,44 @@ impl NetApp {
                 //     udp::bind(&mut pcbs.udp_pcbs, soc, local);
                 //     Some(soc)
                 // };
+            } else {
+                println!("APP: skipping soc creation...");
             }
             {
-                let pcbs = &mut pcbs_arc.lock().unwrap();
-                let devices = &mut devices_arc.lock().unwrap();
-                let contexts = &mut contexts_arc.lock().unwrap();
-                let eth_device = devices.get_mut_by_type(NetDeviceType::Ethernet).unwrap();
+                // let pcbs = &mut pcbs_arc.lock().unwrap();
+                // let devices = &mut devices_arc.lock().unwrap();
+                // let contexts = &mut contexts_arc.lock().unwrap();
+                // let eth_device = devices.get_mut_by_type(NetDeviceType::Ethernet).unwrap();
                 let soc = soc_opt.unwrap();
 
+                // TEST: ICMP output
+
+                // let pid = process::id() % u16::MAX as u32;
+                // let values = le_to_be_u32(pid << 16 | 1);
+                // let icmp_type_echo: u8 = 8;
+                // let ip_any = 0;
+                // let dst = ip_addr_to_bytes("8.8.8.8").unwrap();
+                // icmp::output(
+                //     icmp_type_echo,
+                //     0,
+                //     values,
+                //     data,
+                //     data_len,
+                //     ip_any,
+                //     dst,
+                //     eth_device,
+                //     contexts,
+                //     pcbs,
+                // );
+
                 // TEST: UDP send
+
                 // let remote = IPEndpoint::new_from_str("192.0.2.1", 10007);
                 // udp::send_to(soc, data, remote, eth_device, contexts, pcbs);
 
                 // TEST: UDP receive & send
-                // let received = udp::receive_from(soc, pcbs_arc.clone());
 
+                // let received = udp::receive_from(soc, pcbs_arc.clone());
                 // if received.is_some() {
                 //     let data_entry = received.unwrap();
                 //     println!(
@@ -184,27 +207,19 @@ impl NetApp {
                 //     }
                 // }
 
-                // TEST: ICMP output
-                // let pid = process::id() % u16::MAX as u32;
-                // let values = le_to_be_u32(pid << 16 | 1);
-                // let icmp_type_echo: u8 = 8;
-                // let ip_any = 0;
-                // let dst = ip_addr_to_bytes("8.8.8.8").unwrap();
-                // icmp::output(
-                //     icmp_type_echo,
-                //     0,
-                //     values,
-                //     data,
-                //     data_len,
-                //     ip_any,
-                //     dst,
-                //     eth_device,
-                //     contexts,
-                //     pcbs,
-                // );
-            }
+                // TEST: TCP receive & send
 
-            // TEST: TCP
+                println!("APP: starting TCP receive...");
+                let received = tcp::receive(soc, 2048, pcbs_arc.clone()).unwrap();
+                println!("App: TCP received = {:02x?}", received);
+                {
+                    let devices = &mut devices_arc.lock().unwrap();
+                    let contexts = &mut contexts_arc.lock().unwrap();
+                    let eth_device = devices.get_mut_by_type(NetDeviceType::Ethernet).unwrap();
+
+                    tcp::send(soc, received, eth_device, contexts, &mut pcbs_arc.clone());
+                }
+            }
         })
     }
 

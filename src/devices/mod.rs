@@ -5,7 +5,7 @@ use crate::{
     drivers::{DriverData, DriverType},
     interrupt,
     net::NetInterfaceFamily,
-    protocols::{ip::IPInterface, NetProtocol, ProtocolData, ProtocolType},
+    protocols::{ip::IPInterface, NetProtocols, ProtocolData, ProtocolType},
     util::List,
 };
 use signal_hook::{consts::SIGUSR1, low_level::raise};
@@ -129,7 +129,7 @@ impl NetDevice {
     }
 
     /// ISR (interrupt service routine) for registered IRQs. Handles inputs and raises SIGUSR1.
-    pub fn isr(&mut self, irq: i32, protocols: &mut List<NetProtocol>) {
+    pub fn isr(&mut self, irq: i32, protocols: &mut NetProtocols) {
         let incoming_data = match self.device_type {
             NetDeviceType::Loopback => loopback::read_data(self),
             NetDeviceType::Ethernet => ethernet::read_data(self),
@@ -141,7 +141,7 @@ impl NetDevice {
         }
 
         let (proto_type, data, len) = incoming_data.unwrap();
-        for protocol in protocols.iter_mut() {
+        for protocol in protocols.entries.iter_mut() {
             if protocol.protocol_type == proto_type {
                 let data_entry: ProtocolData = ProtocolData::new(irq, Some(Arc::new(data)), len);
                 protocol.input_head.push_back(data_entry);
@@ -154,5 +154,38 @@ impl NetDevice {
             proto_type
         );
         raise(SIGUSR1).unwrap();
+    }
+}
+
+pub struct NetDevices {
+    pub entries: List<NetDevice>,
+}
+
+impl NetDevices {
+    pub fn new() -> NetDevices {
+        NetDevices {
+            entries: List::<NetDevice>::new(),
+        }
+    }
+
+    pub fn register(&mut self, device: NetDevice) {
+        self.entries.push(device);
+    }
+
+    pub fn handle_irq(&mut self, irq: i32, protocols: &mut NetProtocols) {
+        for device in self.entries.iter_mut() {
+            if device.irq_entry.irq == irq {
+                device.isr(irq, protocols);
+            }
+        }
+    }
+
+    pub fn get_mut_by_type(&mut self, device_type: NetDeviceType) -> Option<&mut NetDevice> {
+        for device in self.entries.iter_mut() {
+            if device.device_type == device_type {
+                return Some(device);
+            }
+        }
+        None
     }
 }

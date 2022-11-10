@@ -1,8 +1,16 @@
 pub mod arp;
 pub mod ip;
 
-use crate::{devices::NetDevice, protocol_stack::ProtocolContexts, util::List};
+use crate::{
+    devices::{NetDevice, NetDevices},
+    util::List,
+};
 use std::{collections::VecDeque, sync::Arc};
+
+use self::{
+    arp::ArpTable,
+    ip::{tcp::TcpPcbs, udp::UdpPcbs, IPHeaderIdManager, IPRoutes},
+};
 
 #[derive(PartialEq, Debug)]
 pub enum ProtocolType {
@@ -51,8 +59,9 @@ impl NetProtocol {
     pub fn handle_input(
         &mut self,
         // proto_stack: &mut ProtocolStack,
-        devices: &mut List<NetDevice>,
+        devices: &mut NetDevices,
         contexts: &mut ProtocolContexts,
+        pcbs: &mut ControlBlocks,
     ) {
         loop {
             if self.input_head.is_empty() {
@@ -63,9 +72,9 @@ impl NetProtocol {
             let len = proto_data.len;
 
             // let devices = proto_stack.devices.lock().unwrap();
-            for device in devices.iter_mut() {
+            for device in devices.entries.iter_mut() {
                 if device.irq_entry.irq == proto_data.irq {
-                    self.input(data.as_slice(), len, device, contexts);
+                    self.input(data.as_slice(), len, device, contexts, pcbs);
                     break;
                 }
             }
@@ -79,6 +88,7 @@ impl NetProtocol {
         len: usize,
         device: &mut NetDevice,
         contexts: &mut ProtocolContexts,
+        pcbs: &mut ControlBlocks,
     ) {
         // let parsed = u32::from_be_bytes(data.as_slice());
         match self.protocol_type {
@@ -88,12 +98,58 @@ impl NetProtocol {
             }
             ProtocolType::IP => {
                 println!("Handling protocol: IP | Received: {:02x?}", data);
-                ip::input(data, len, device, contexts).unwrap();
+                ip::input(data, len, device, contexts, pcbs).unwrap();
             }
             ProtocolType::Unknown => {
                 println!("Protocol: Unknown | Received: {:x?}", data);
             }
         }
         println!("__________Handled an input\n")
+    }
+}
+
+pub struct NetProtocols {
+    pub entries: List<NetProtocol>,
+}
+
+impl NetProtocols {
+    pub fn new() -> NetProtocols {
+        NetProtocols {
+            entries: List::<NetProtocol>::new(),
+        }
+    }
+
+    pub fn register(&mut self, protocol: NetProtocol) {
+        self.entries.push(protocol);
+    }
+
+    pub fn handle_data(
+        &mut self,
+        devices: &mut NetDevices,
+        contexts: &mut ProtocolContexts,
+        pcbs: &mut ControlBlocks,
+    ) {
+        for protocol in self.entries.iter_mut() {
+            protocol.handle_input(devices, contexts, pcbs);
+        }
+    }
+}
+pub struct ProtocolContexts {
+    pub arp_table: ArpTable,
+    pub ip_routes: IPRoutes,
+    pub ip_id_manager: IPHeaderIdManager,
+}
+
+pub struct ControlBlocks {
+    pub udp_pcbs: UdpPcbs,
+    pub tcp_pcbs: TcpPcbs,
+}
+
+impl ControlBlocks {
+    pub fn new() -> ControlBlocks {
+        ControlBlocks {
+            udp_pcbs: UdpPcbs::new(),
+            tcp_pcbs: TcpPcbs::new(),
+        }
     }
 }

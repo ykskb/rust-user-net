@@ -10,3 +10,4 @@ signal-hook = { version = "0.3.14", features = ["extended-siginfo"] }
 nix = "0.25.0"
 ifstructs = "0.1.1"
 ioctl = { version = "0.6", package = "ioctl-sys" }
+rand = "0.8.5"

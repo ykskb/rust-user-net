@@ -1,10 +1,7 @@
-use super::{
-    get_interface, IPAdress, IPEndpoint, IPInterface, IPProtocolType, IP_ADDR_ANY,
-    IP_PAYLOAD_MAX_SIZE,
-};
+use super::{ControlBlocks, ProtocolContexts};
+use super::{IPAdress, IPEndpoint, IPInterface, IPProtocolType, IP_ADDR_ANY, IP_PAYLOAD_MAX_SIZE};
 use crate::{
     devices::NetDevice,
-    protocol_stack::{ProtocolContexts, ProtocolStack},
     util::{be_to_le_u16, bytes_to_struct, cksum16, le_to_be_u16, to_u8_slice},
 };
 use std::{
@@ -66,10 +63,10 @@ impl UdpPcb {
     }
 }
 
-struct UdpDataEntry {
-    remote_endpoint: IPEndpoint,
-    len: usize,
-    data: Vec<u8>,
+pub struct UdpDataEntry {
+    pub remote_endpoint: IPEndpoint,
+    pub len: usize,
+    pub data: Vec<u8>,
 }
 
 pub struct UdpPcbs {
@@ -154,6 +151,7 @@ pub fn input(
     device: &mut NetDevice,
     iface: &IPInterface,
     contexts: &mut ProtocolContexts,
+    pcbs: &mut ControlBlocks,
 ) -> Result<(), ()> {
     println!("UDP: received data {:02x?}", data);
 
@@ -182,7 +180,7 @@ pub fn input(
         return Err(());
     }
 
-    let pcb_opt = contexts.udp_pcbs.get_by_host(dst, header.dst_port);
+    let pcb_opt = pcbs.udp_pcbs.get_by_host(dst, header.dst_port);
     let dst_port = header.dst_port;
     if pcb_opt.is_none() {
         println!("There is no connection for IP: {:?}:{:?}", dst, dst_port);
@@ -220,6 +218,7 @@ pub fn output(
     mut udp_data: Vec<u8>,
     device: &mut NetDevice,
     contexts: &mut ProtocolContexts,
+    pcbs: &mut ControlBlocks,
 ) {
     println!("UDP: output");
     let udp_hdr_size = size_of::<UdpHeader>();
@@ -300,8 +299,9 @@ pub fn send_to(
     remote: IPEndpoint,
     device: &mut NetDevice,
     contexts: &mut ProtocolContexts,
+    pcbs: &mut ControlBlocks,
 ) {
-    let pcb = contexts
+    let pcb = pcbs
         .udp_pcbs
         .get_by_id(pcb_id)
         .expect("UDP (receive_from): no specified PCB entry.");
@@ -309,16 +309,16 @@ pub fn send_to(
     // Local address setup in case not set in PCB
     let mut local_endpoint = IPEndpoint::new(pcb.local_endpoint.address, 0);
     if local_endpoint.address == IP_ADDR_ANY {
-        let interface = get_interface(&contexts.ip_routes, remote.address)
+        let interface = contexts
+            .ip_routes
+            .get_interface(remote.address)
             .expect("UDP: interface not found for remote address.");
         local_endpoint.address = interface.unicast;
     }
     // Local port setup in case not set in PCB
     if pcb.local_endpoint.port == 0 {
         for p in UDP_SRC_PORT_MIN..UDP_SRC_PORT_MAX {
-            let is_used = contexts
-                .udp_pcbs
-                .is_endpoint_used(local_endpoint.address, p);
+            let is_used = pcbs.udp_pcbs.is_endpoint_used(local_endpoint.address, p);
             if is_used == false {
                 println!("UDP: assigned a port number: {p}");
                 local_endpoint.port = p;
@@ -330,15 +330,14 @@ pub fn send_to(
         }
     }
 
-    output(local_endpoint, remote, data, device, contexts)
+    output(local_endpoint, remote, data, device, contexts, pcbs)
 }
 
-pub fn receive_from(pcb_id: usize, pstack_arc: Arc<Mutex<ProtocolStack>>) -> Option<Vec<u8>> {
+pub fn receive_from(pcb_id: usize, pcbs_arc: Arc<Mutex<ControlBlocks>>) -> Option<UdpDataEntry> {
     let (sender, receiver) = mpsc::channel();
     {
-        let pstack = &mut pstack_arc.lock().unwrap();
-        let pcb = pstack
-            .contexts
+        let pcbs = &mut pcbs_arc.lock().unwrap();
+        let pcb = pcbs
             .udp_pcbs
             .get_mut_by_id(pcb_id)
             .expect("UDP(receive_from): no specified PCB entry.");
@@ -352,9 +351,8 @@ pub fn receive_from(pcb_id: usize, pstack_arc: Arc<Mutex<ProtocolStack>>) -> Opt
         }
 
         {
-            let mut pstack = pstack_arc.lock().unwrap();
-            let pcb = pstack
-                .contexts
+            let mut pcbs = pcbs_arc.lock().unwrap();
+            let pcb = pcbs
                 .udp_pcbs
                 .get_mut_by_id(pcb_id)
                 .expect("UDP: receive_from got no specified PCB entry.");
@@ -363,11 +361,7 @@ pub fn receive_from(pcb_id: usize, pstack_arc: Arc<Mutex<ProtocolStack>>) -> Opt
                 println!("UDP(receive_from): PCB got closed.");
                 return None;
             }
-            let data_entry = pcb.data_entries.pop_front();
-            if data_entry.is_some() {
-                let entry = data_entry.unwrap();
-                return Some(entry.data);
-            }
+            return pcb.data_entries.pop_front();
         }
     }
 }

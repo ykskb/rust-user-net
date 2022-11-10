@@ -3,7 +3,6 @@ mod devices;
 mod drivers;
 mod interrupt;
 mod net;
-mod protocol_stack;
 mod protocols;
 mod util;
 
@@ -16,6 +15,8 @@ use signal_hook::iterator::exfiltrator::origin::WithOrigin;
 use signal_hook::iterator::SignalsInfo;
 use std::io::Error;
 use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 fn main() -> Result<(), Error> {
     // Signal setup

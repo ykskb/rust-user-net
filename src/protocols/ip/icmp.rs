@@ -1,7 +1,7 @@
 use super::{IPAdress, IPInterface, IPProtocolType};
 use crate::{
     devices::NetDevice,
-    protocol_stack::ProtocolContexts,
+    protocols::ip::{ControlBlocks, ProtocolContexts},
     util::{bytes_to_struct, cksum16, to_u8_slice},
 };
 use std::mem::size_of;
@@ -61,6 +61,7 @@ pub fn input(
     device: &mut NetDevice,
     iface: &IPInterface,
     contexts: &mut ProtocolContexts,
+    pcbs: &mut ControlBlocks,
 ) -> Result<(), ()> {
     let icmp_hdr_size = size_of::<ICMPHeader>();
     let hdr = unsafe { bytes_to_struct::<ICMPHeader>(data) };
@@ -89,6 +90,7 @@ pub fn input(
             src, // dst becomes src for replying
             device,
             contexts,
+            pcbs,
         );
     }
     Ok(())
@@ -104,6 +106,7 @@ pub fn output(
     dst: IPAdress,
     device: &mut NetDevice,
     contexts: &mut ProtocolContexts,
+    pcbs: &mut ControlBlocks,
 ) {
     let hlen = size_of::<ICMPHeader>();
     let hdr = ICMPHeader {

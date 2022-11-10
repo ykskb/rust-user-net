@@ -3,10 +3,10 @@ pub mod tcp;
 pub mod udp;
 
 use super::arp::arp_resolve;
+use super::{ControlBlocks, ProtocolContexts};
+use crate::net::{NetInterface, NetInterfaceFamily};
 use crate::{
     devices::{ethernet::ETH_ADDR_LEN, NetDevice, DEVICE_FLAG_NEED_ARP},
-    net::{NetInterface, NetInterfaceFamily},
-    protocol_stack::ProtocolContexts,
     util::{be_to_le_u16, be_to_le_u32, bytes_to_struct, cksum16, le_to_be_u16, to_u8_slice, List},
 };
 use std::{
@@ -104,28 +104,43 @@ impl IPRoute {
         }
     }
 }
+pub struct IPRoutes {
+    entries: List<IPRoute>,
+}
 
-pub fn lookup_ip_route(routes: &List<IPRoute>, dst: IPAdress) -> Option<&IPRoute> {
-    let mut candidate = None;
-    for route in routes.iter() {
-        if (dst & route.netmask) == route.network {
-            if candidate.is_none() {
-                candidate = Some(route);
-            } else {
-                let candidate_route = candidate.unwrap();
-                if be_to_le_u32(candidate_route.netmask) < be_to_le_u32(route.netmask) {
+impl IPRoutes {
+    pub fn new() -> IPRoutes {
+        IPRoutes {
+            entries: List::<IPRoute>::new(),
+        }
+    }
+
+    pub fn register(&mut self, route: IPRoute) {
+        self.entries.push(route);
+    }
+
+    pub fn lookup_ip_route(&self, dst: IPAdress) -> Option<&IPRoute> {
+        let mut candidate = None;
+        for route in self.entries.iter() {
+            if (dst & route.netmask) == route.network {
+                if candidate.is_none() {
                     candidate = Some(route);
+                } else {
+                    let candidate_route = candidate.unwrap();
+                    if be_to_le_u32(candidate_route.netmask) < be_to_le_u32(route.netmask) {
+                        candidate = Some(route);
+                    }
                 }
             }
         }
+        candidate
     }
-    candidate
-}
 
-pub fn get_interface(routes: &List<IPRoute>, dst: IPAdress) -> Option<Arc<IPInterface>> {
-    let route = lookup_ip_route(routes, dst);
-    route?;
-    Some(route.unwrap().interface.clone())
+    pub fn get_interface(&self, dst: IPAdress) -> Option<Arc<IPInterface>> {
+        let route = self.lookup_ip_route(dst);
+        route?;
+        Some(route.unwrap().interface.clone())
+    }
 }
 
 // see https://www.iana.org/assignments/protocol-numbers/protocol-numbers.txt
@@ -219,7 +234,7 @@ pub fn output(
     device: &mut NetDevice,
     contexts: &mut ProtocolContexts,
 ) -> Result<(), ()> {
-    let route_lookup = lookup_ip_route(&contexts.ip_routes, dst);
+    let route_lookup = contexts.ip_routes.lookup_ip_route(dst);
     if route_lookup.is_none() {
         return Err(());
     }
@@ -247,9 +262,10 @@ pub fn output(
         contexts.ip_id_manager.generate_id(),
     );
 
+    let header_dst = header.dst;
     println!(
         "IP output: header destination = {:?} src = {:?} nexthop = {:?}",
-        ip_addr_to_str(header.dst),
+        ip_addr_to_str(header_dst),
         ip_addr_to_str(header.src),
         ip_addr_to_str(next_hop)
     );
@@ -315,6 +331,7 @@ pub fn input(
     len: usize,
     device: &mut NetDevice,
     contexts: &mut ProtocolContexts,
+    pcbs: &mut ControlBlocks,
 ) -> Result<(), ()> {
     if len < IP_HEADER_MIN_SIZE {
         panic!("IP input: data is too short.")
@@ -345,10 +362,20 @@ pub fn input(
                     device,
                     &interface,
                     contexts,
+                    pcbs,
                 );
             }
             IPProtocolType::Tcp => {
-                return tcp::input();
+                return tcp::input(
+                    sub_data,
+                    len - header_len,
+                    header.src,
+                    header.dst,
+                    device,
+                    &interface,
+                    contexts,
+                    pcbs,
+                );
             }
             IPProtocolType::Udp => {
                 return udp::input(
@@ -359,6 +386,7 @@ pub fn input(
                     device,
                     &interface,
                     contexts,
+                    pcbs,
                 );
             }
             IPProtocolType::Unknown => {

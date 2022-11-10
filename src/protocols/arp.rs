@@ -1,6 +1,5 @@
 use super::ip::{IPAdress, IPInterface, IP_ADDR_LEN};
-use super::ProtocolType;
-use crate::protocol_stack::ProtocolContexts;
+use super::{ProtocolContexts, ProtocolType};
 use crate::protocols::ip::ip_addr_to_str;
 use crate::{
     devices::{ethernet::ETH_ADDR_LEN, NetDevice, NetDeviceType},

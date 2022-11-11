@@ -24,11 +24,13 @@ fn main() -> Result<(), Error> {
     sigs.extend(TERM_SIGNALS);
     let mut signals = SignalsInfo::<WithOrigin>::new(&sigs)?;
 
-    let (sender, receiver) = mpsc::channel();
+    let (app_sender, app_receiver) = mpsc::channel();
+    let (tcp_sender, tcp_receiver) = mpsc::channel();
 
     // Protocol stack start
     let mut app = NetApp::new();
-    let app_join = app.run(receiver);
+    let app_join = app.run(app_receiver);
+    let tcp_join = app.tcp_transmit_thread(tcp_receiver);
 
     // Interrupt thread
     println!("Starting signal receiver thread...");
@@ -50,9 +52,11 @@ fn main() -> Result<(), Error> {
     }
     // App thread termination
     println!("Closing app thread.");
-    sender.send(()).unwrap();
+    app_sender.send(()).unwrap();
+    tcp_sender.send(()).unwrap();
     app.close_sockets();
     app_join.join().unwrap();
+    tcp_join.join().unwrap();
     println!("App thread closed.");
     Ok(())
 }

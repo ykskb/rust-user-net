@@ -150,8 +150,6 @@ impl NetApp {
                 //     udp::bind(&mut pcbs.udp_pcbs, soc, local);
                 //     Some(soc)
                 // };
-            } else {
-                println!("APP: skipping soc creation...");
             }
             {
                 // let pcbs = &mut pcbs_arc.lock().unwrap();
@@ -217,6 +215,7 @@ impl NetApp {
                     let contexts = &mut contexts_arc.lock().unwrap();
                     let eth_device = devices.get_mut_by_type(NetDeviceType::Ethernet).unwrap();
 
+                    println!("APP: sending data back...");
                     tcp::send(soc, received, eth_device, contexts, &mut pcbs_arc.clone());
                 }
             }

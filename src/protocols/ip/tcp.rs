@@ -10,7 +10,6 @@ use crate::{
     },
 };
 use rand::Rng;
-use std::alloc::System;
 use std::{
     cmp,
     collections::VecDeque,
@@ -29,6 +28,7 @@ const TCP_RETRANSMIT_TIMOUT_SEC: u64 = 12;
 const TCP_TIMEWAIT_SEC: u64 = 30; // substitute for 2MSL
 const TCP_SRC_PORT_MIN: u16 = 49152;
 const TCP_SRC_PORT_MAX: u16 = 65535;
+const PCB_BUF_LEN: usize = 65535;
 
 struct PseudoHeader {
     src: IPAdress,
@@ -68,6 +68,7 @@ struct TcpHeader {
     urg_ptr: u16,
 }
 
+#[derive(Debug)]
 struct TcpSegmentInfo {
     seq_num: u32,
     ack_num: u32,
@@ -196,7 +197,7 @@ impl TcpPcb {
             irs: 0,
             mtu: 0,
             mss: 0,
-            buf: Vec::new(),
+            buf: Vec::with_capacity(PCB_BUF_LEN),
             wait_time: None,
             sender: None,
             data_queue: TcpDataQueue::new(),
@@ -568,7 +569,7 @@ fn segment_arrives(
             };
             pcb.local = local;
             pcb.remote = remote;
-            pcb.recv_context.window = pcb.buf.len() as u16;
+            pcb.recv_context.window = PCB_BUF_LEN as u16;
             pcb.recv_context.next = seg.seq_num + 1;
             pcb.iss = rand::thread_rng().gen_range(0..u32::MAX);
             println!("TCP: Replying with SYN-ACK...");
@@ -677,6 +678,10 @@ fn segment_arrives(
         || pcb_state == TcpPcbState::TimeWait
     {
         let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
+        println!(
+            "TCP: PCB recv.window = {:x} recv.next = {:x}",
+            pcb.recv_context.window, pcb.recv_context.next
+        );
         if seg.len < 1 {
             if pcb.recv_context.window < 1 {
                 if seg.seq_num == pcb.recv_context.next {
@@ -704,6 +709,7 @@ fn segment_arrives(
             }
         }
         if !acceptable {
+            println!("TCP: seq not acceptable.");
             if tcp_flag_exists(flags, TcpFlag::RST) {
                 println!("TCP: RST found and sequence/window not acceptable. Replying with ACK...");
                 output(pcb, TcpFlag::ACK as u8, vec![], device, contexts);
@@ -1005,6 +1011,8 @@ pub fn input(
         window: be_to_le_u16(header.window),
         urg_ptr: be_to_le_u16(header.urg_ptr),
     };
+
+    println!("TCP: received segment = {:?}", seg);
 
     segment_arrives(
         seg,
@@ -1312,7 +1320,7 @@ pub fn send(
                     output(
                         pcb,
                         TcpFlag::ACK as u8 | TcpFlag::PSH as u8,
-                        data[send_len..].to_vec(),
+                        data[sent..].to_vec(),
                         device,
                         contexts,
                     );
@@ -1342,16 +1350,15 @@ pub fn send(
 
 pub fn receive(pcb_id: usize, size: usize, pcbs_arc: Arc<Mutex<ControlBlocks>>) -> Option<Vec<u8>> {
     let (sender, receiver) = mpsc::channel();
-    let mut remain = 0;
+    let mut remain = None;
     let mut pcb_state;
-    let mut pcb_buf_len;
+    let pcb_buf_len = PCB_BUF_LEN;
     let mut pcb_recv_window;
     {
         let pcbs = &mut pcbs_arc.lock().unwrap();
         let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
         pcb.sender = Some(sender);
         pcb_state = pcb.state;
-        pcb_buf_len = pcb.buf.len();
         pcb_recv_window = pcb.recv_context.window as usize;
     }
 
@@ -1369,24 +1376,22 @@ pub fn receive(pcb_id: usize, size: usize, pcbs_arc: Arc<Mutex<ControlBlocks>>) 
             || pcb_state == TcpPcbState::FinWait1
             || pcb_state == TcpPcbState::FinWait2
         {
-            remain = pcb_buf_len - pcb_recv_window;
-            if remain > 0 {
-                break;
-            }
-            println!("TCP: receive sleep...");
-            if !receiver.recv().unwrap() {
-                return None;
-            }
-            {
+            if pcb_recv_window >= pcb_buf_len {
+                println!("TCP: sleeping for incoming data...");
+                if !receiver.recv().unwrap() {
+                    return None;
+                }
                 let pcbs = &mut pcbs_arc.lock().unwrap();
                 let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
                 pcb_state = pcb.state;
-                pcb_buf_len = pcb.buf.len();
                 pcb_recv_window = pcb.recv_context.window as usize;
+                remain = Some(pcb_buf_len - pcb_recv_window);
+            } else {
+                break;
             }
         } else if pcb_state == TcpPcbState::CloseWait {
-            remain = pcb_buf_len - pcb_recv_window;
-            if remain > 0 {
+            if pcb_buf_len > pcb_recv_window {
+                remain = Some(pcb_buf_len - pcb_recv_window);
                 break;
             }
             break; // fall through
@@ -1398,10 +1403,17 @@ pub fn receive(pcb_id: usize, size: usize, pcbs_arc: Arc<Mutex<ControlBlocks>>) 
         } else {
             println!("TCP: unknown state.");
         }
+        println!("TCP receive: retrying...");
     }
     let pcbs = &mut pcbs_arc.lock().unwrap();
     let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
-    let len = cmp::min(size, remain);
+    let len = {
+        if remain.is_none() {
+            size
+        } else {
+            cmp::min(size, remain.unwrap())
+        }
+    };
     let data = pcb.buf[..len].to_vec();
     pcb.buf = pcb.buf[len..].to_vec();
     pcb.recv_context.window += len as u16;

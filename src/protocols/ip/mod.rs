@@ -82,7 +82,7 @@ pub struct IPRoute {
     network: IPAdress,
     netmask: IPAdress,
     next_hop: IPAdress,
-    interface: Arc<IPInterface>,
+    pub interface: Arc<IPInterface>,
 }
 
 impl IPRoute {
@@ -234,11 +234,11 @@ pub fn output(
     device: &mut NetDevice,
     contexts: &mut ProtocolContexts,
 ) -> Result<(), ()> {
-    let route_lookup = contexts.ip_routes.lookup_ip_route(dst);
-    if route_lookup.is_none() {
+    let route_opt = contexts.ip_routes.lookup_ip_route(dst);
+    if route_opt.is_none() {
         return Err(());
     }
-    let route = route_lookup.unwrap();
+    let route = route_opt.unwrap();
 
     if src != IP_ADDR_ANY && src != route.interface.unicast {
         println!(

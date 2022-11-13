@@ -1,6 +1,7 @@
 use super::{ControlBlocks, ProtocolContexts};
 use super::{IPAdress, IPEndpoint, IPInterface, IPProtocolType, IP_ADDR_ANY, IP_HEADER_MIN_SIZE};
 use crate::devices::NetDevices;
+use crate::protocols::arp::arp_resolve;
 use crate::{
     devices::NetDevice,
     protocols::ip::ip_addr_to_str,
@@ -30,6 +31,7 @@ const TCP_SRC_PORT_MIN: u16 = 49152;
 const TCP_SRC_PORT_MAX: u16 = 65535;
 const PCB_BUF_LEN: usize = 65535;
 
+#[derive(Debug)]
 struct PseudoHeader {
     src: IPAdress,
     dst: IPAdress,
@@ -206,7 +208,7 @@ impl TcpPcb {
         }
     }
 
-    pub fn add_data_entry(&mut self, seq_num: u32, flags: u8, data: Vec<u8>) {
+    pub fn add_data_queue(&mut self, seq_num: u32, flags: u8, data: Vec<u8>) {
         let now = SystemTime::now();
         let entry = TcpDataQueueEntry {
             first_sent_at: now,
@@ -361,6 +363,7 @@ pub fn retransmit(pcbs: &mut TcpPcbs, device: &mut NetDevice, contexts: &mut Pro
                 .unwrap();
             if timeout.elapsed().is_err() {
                 // elapsed errors when time is before now
+                println!("TCP: retransmitting...");
                 output_segment(
                     queue.seq_num,
                     pcb.recv_context.next,
@@ -443,10 +446,10 @@ pub fn output(
     if tcp_flag_exists(flags, TcpFlag::SYN) {
         seq_num = pcb.iss;
     }
-    if (tcp_flag_exists(flags, TcpFlag::SYN) && tcp_flag_exists(flags, TcpFlag::FIN))
+    if (tcp_flag_exists(flags, TcpFlag::SYN) || tcp_flag_exists(flags, TcpFlag::FIN))
         || data.len() > 0
     {
-        pcb.add_data_entry(seq_num, flags, data.clone()); // TODO: fix clone
+        pcb.add_data_queue(seq_num, flags, data.clone()); // TODO: fix clone
     }
     output_segment(
         seq_num,
@@ -1040,6 +1043,8 @@ pub fn rfc793_open(
     contexts_arc: Arc<Mutex<ProtocolContexts>>,
 ) -> Option<usize> {
     let pcb_id;
+    let pcb_state;
+    let initial_pcb_state;
     let (sender, receiver) = mpsc::channel();
     {
         let pcbs = &mut pcbs_arc.lock().unwrap();
@@ -1073,7 +1078,7 @@ pub fn rfc793_open(
                 ip_addr_to_str(pcb.local.address),
                 ip_addr_to_str(pcb.remote.address)
             );
-            pcb.recv_context.window = pcb.buf.len() as u16;
+            pcb.recv_context.window = PCB_BUF_LEN as u16;
             pcb.iss = rand::thread_rng().gen_range(0..u32::MAX);
 
             output(pcb, TcpFlag::SYN as u8, vec![], eth_device, contexts);
@@ -1084,21 +1089,19 @@ pub fn rfc793_open(
             pcb.send_context.next = pcb.iss + 1;
             pcb.state = TcpPcbState::SynSent;
         }
+        pcb_state = pcb.state;
+        initial_pcb_state = pcb.state;
     }
-    loop {
-        let wakeup = receiver.recv().unwrap();
+    while pcb_state == initial_pcb_state {
+        let proceed = receiver.recv().unwrap();
         {
             let pcbs = &mut pcbs_arc.lock().unwrap();
             let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
-            if !wakeup {
-                pcb.state = TcpPcbState::Closed;
-                return None;
-            }
             if pcb.state == TcpPcbState::Established {
                 break;
             }
-            if pcb.state != TcpPcbState::SynReceived {
-                pcb.state = TcpPcbState::Closed;
+            if !proceed || pcb.state != TcpPcbState::SynReceived {
+                pcb.release();
                 return None;
             }
         }
@@ -1161,7 +1164,7 @@ pub fn connect(
         pcb.local.port = local.port;
         pcb.remote.address = remote.address;
         pcb.remote.port = remote.port;
-        pcb.recv_context.window = pcb.buf.len() as u16;
+        pcb.recv_context.window = PCB_BUF_LEN as u16;
         pcb.iss = rand::thread_rng().gen_range(0..u32::MAX);
         output(pcb, TcpFlag::SYN as u8, vec![], device, contexts);
         // close & release if fails

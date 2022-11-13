@@ -1,6 +1,7 @@
 use crate::devices::ethernet;
 use crate::devices::loopback;
 use crate::devices::{NetDeviceType, NetDevices};
+use crate::protocols::arp::arp_resolve;
 use crate::protocols::arp::ArpTable;
 use crate::protocols::ip::icmp;
 use crate::protocols::ip::ip_addr_to_bytes;
@@ -129,12 +130,27 @@ impl NetApp {
 
             if soc_opt.is_none() {
                 // TEST: TCP connection
-                let local = IPEndpoint::new_from_str("0.0.0.0", 7);
+                let active = true;
+                let local = {
+                    if active {
+                        IPEndpoint::new_from_str("192.0.2.2", 7)
+                    } else {
+                        IPEndpoint::new_from_str("0.0.0.0", 7)
+                    }
+                };
+                let remote = {
+                    if active {
+                        Some(IPEndpoint::new_from_str("192.0.2.1", 10007))
+                    } else {
+                        None
+                    }
+                };
+
                 soc_opt = Some(
                     tcp::rfc793_open(
                         local,
-                        None,
-                        false,
+                        remote,
+                        active,
                         pcbs_arc.clone(),
                         devices_arc.clone(),
                         contexts_arc.clone(),

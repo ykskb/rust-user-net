@@ -4,6 +4,7 @@ use crate::{
     devices::NetDevice,
     util::{be_to_le_u16, bytes_to_struct, cksum16, le_to_be_u16, to_u8_slice},
 };
+use log::{debug, error, info, trace, warn};
 use std::{
     collections::VecDeque,
     mem::size_of,
@@ -153,7 +154,7 @@ pub fn input(
     contexts: &mut ProtocolContexts,
     pcbs: &mut ControlBlocks,
 ) -> Result<(), ()> {
-    println!("UDP: received data {:02x?}", data);
+    trace!("UDP: received data {:02x?}", data);
 
     let udp_hdr_size = size_of::<UdpHeader>();
     let header = unsafe { bytes_to_struct::<UdpHeader>(data) };
@@ -176,19 +177,22 @@ pub fn input(
     let pseudo_sum = !cksum16(pseudo_hdr_bytes, pseudo_hdr_bytes.len(), 0);
     let sum = cksum16(data, len, pseudo_sum as u32);
     if sum != 0 {
-        println!("UDP input checksum failure: value = {sum}");
+        error!("UDP: input checksum failure: value = {sum}");
         return Err(());
     }
 
     let pcb_opt = pcbs.udp_pcbs.get_by_host(dst, header.dst_port);
     let dst_port = header.dst_port;
     if pcb_opt.is_none() {
-        println!("There is no connection for IP: {:?}:{:?}", dst, dst_port);
+        error!(
+            "UDP: there is no connection for IP: {:?}:{:?}",
+            dst, dst_port
+        );
         return Err(());
     }
 
-    println!(
-        "UDP input: source port = {:?} destination port: {:?}",
+    debug!(
+        "UDP: input source port = {:?} destination port: {:?}",
         be_to_le_u16(header.src_port),
         be_to_le_u16(header.dst_port)
     );
@@ -220,11 +224,11 @@ pub fn output(
     contexts: &mut ProtocolContexts,
     pcbs: &mut ControlBlocks,
 ) {
-    println!("UDP: output");
+    info!("UDP: output");
     let udp_hdr_size = size_of::<UdpHeader>();
     let len = udp_data.len();
     if len > (IP_PAYLOAD_MAX_SIZE - udp_hdr_size) {
-        panic!("UDP output error: data too big");
+        panic!("UDP: data too big for output.");
     }
     let total_len = udp_hdr_size + len;
     let total_len_in_be = le_to_be_u16(total_len as u16);
@@ -283,7 +287,7 @@ pub fn bind(pcbs: &mut UdpPcbs, pcb_id: usize, local_endpoint: IPEndpoint) {
             local_endpoint.address, local_endpoint.port
         );
     }
-    println!("UDP: binding host and port...");
+    info!("UDP: binding host and port...");
     for (i, entry) in pcbs.entries.iter_mut().enumerate() {
         if pcb_id == i {
             entry.local_endpoint = local_endpoint;
@@ -304,7 +308,7 @@ pub fn send_to(
     let pcb = pcbs
         .udp_pcbs
         .get_by_id(pcb_id)
-        .expect("UDP (receive_from): no specified PCB entry.");
+        .expect("UDP: no specified PCB entry for send.");
 
     // Local address setup in case not set in PCB
     let mut local_endpoint = IPEndpoint::new(pcb.local_endpoint.address, 0);
@@ -320,7 +324,7 @@ pub fn send_to(
         for p in UDP_SRC_PORT_MIN..UDP_SRC_PORT_MAX {
             let is_used = pcbs.udp_pcbs.is_endpoint_used(local_endpoint.address, p);
             if is_used == false {
-                println!("UDP: assigned a port number: {p}");
+                info!("UDP: assigned a port number: {p}");
                 local_endpoint.port = p;
                 break;
             }
@@ -355,10 +359,10 @@ pub fn receive_from(pcb_id: usize, pcbs_arc: Arc<Mutex<ControlBlocks>>) -> Optio
             let pcb = pcbs
                 .udp_pcbs
                 .get_mut_by_id(pcb_id)
-                .expect("UDP: receive_from got no specified PCB entry.");
+                .expect("UDP: no specified PCB entry for receive.");
 
             if pcb.state != UdpPcbState::Open {
-                println!("UDP(receive_from): PCB got closed.");
+                warn!("UDP: PCB got closed for receive.");
                 return None;
             }
             return pcb.data_entries.pop_front();

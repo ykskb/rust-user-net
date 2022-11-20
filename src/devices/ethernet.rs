@@ -1,3 +1,5 @@
+use log::{debug, info, trace};
+
 use super::{
     NetDevice, NetDeviceType, DEVICE_FLAG_BROADCAST, DEVICE_FLAG_NEED_ARP, NET_DEVICE_ADDR_LEN,
 };
@@ -67,11 +69,11 @@ pub fn read_data(device: &mut NetDevice) -> Option<(ProtocolType, Vec<u8>, usize
     if device.address[..ETH_ADDR_LEN] != hdr.dst[..ETH_ADDR_LEN]
         && ETH_ADDR_BROADCAST != hdr.dst[..ETH_ADDR_LEN]
     {
-        println!("Not my route.");
+        debug!("Not my route.");
         return None;
     }
 
-    println!(
+    trace!(
         "Ethernet input: buffer = {:?} bytes data = {:02x?}",
         len,
         &buf[..len]
@@ -81,9 +83,12 @@ pub fn read_data(device: &mut NetDevice) -> Option<(ProtocolType, Vec<u8>, usize
     let data = (&buf[hdr_len..len]).to_vec();
     let data_len = len - hdr_len;
 
-    println!(
+    trace!(
         "Device addr: {:x?} Eth header destination: {:x?} Eth header source: {:x?} Eth type: {:x?}",
-        device.address, hdr.dst, hdr.src, eth_type
+        device.address,
+        hdr.dst,
+        hdr.src,
+        eth_type
     );
 
     Some((ProtocolType::from_u16(eth_type), data, data_len))
@@ -120,7 +125,7 @@ pub fn transmit(
     }
     let frame_len = hdr_len + data_len + pad_len;
 
-    println!(
+    trace!(
         "Transmit: frame length: {frame_len} (data: {len} + header: {hdr_len} + pad: {pad_len}) | bytes: {:02x?}",
         &frame[..frame_len]
     );

@@ -4,6 +4,7 @@ use crate::{
     protocols::ip::{ControlBlocks, ProtocolContexts},
     util::{bytes_to_struct, cksum16, to_u8_slice},
 };
+use log::{error, info};
 use std::mem::size_of;
 
 const ICMP_TYPE_ECHOREPLY: u8 = 0;
@@ -66,11 +67,11 @@ pub fn input(
     let icmp_hdr_size = size_of::<ICMPHeader>();
     let hdr = unsafe { bytes_to_struct::<ICMPHeader>(data) };
 
-    println!("ICMP input: type = {:x?}", hdr.icmp_type);
+    info!("ICMP: input type = {:x?}", hdr.icmp_type);
 
     let sum = cksum16(data, len, 0);
     if sum != 0 {
-        println!("Checksum failed: {sum}");
+        error!("Checksum failed: {sum}");
         return Err(());
     }
 

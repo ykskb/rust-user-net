@@ -1,5 +1,6 @@
 use super::{NetDevice, NetDeviceType, IRQ_FLAG_SHARED, NET_DEVICE_ADDR_LEN};
 use crate::{interrupt, protocols::ProtocolType};
+use log::info;
 use signal_hook::low_level::raise;
 use std::sync::Arc;
 
@@ -16,7 +17,7 @@ pub fn read_data(device: &NetDevice) -> Option<(ProtocolType, Vec<u8>, usize)> {
 }
 
 pub fn transmit(device: &mut NetDevice, data: Vec<u8>) -> Result<(), ()> {
-    println!("Transmitting data through loopback device...\n");
+    info!("Transmitting data through loopback device...\n");
     device.irq_entry.custom_data = Some(Arc::new(data));
     raise(IRQ_LOOPBACK).unwrap();
     Ok(())

@@ -10,6 +10,7 @@ use crate::{
         to_u8_slice,
     },
 };
+use log::{debug, error, info, trace, warn};
 use rand::Rng;
 use std::{
     cmp,
@@ -239,7 +240,9 @@ impl TcpPcb {
     pub fn release(&mut self) {
         self.state = TcpPcbState::Free;
         if self.sender.is_some() {
-            self.sender.as_ref().unwrap().send(false);
+            if self.sender.as_ref().unwrap().send(false).is_err() {
+                warn!("TCP: attempting PRB release, however channel not listening.");
+            }
         }
         self.data_queue.entries.clear();
 
@@ -311,10 +314,8 @@ impl TcpPcbs {
     }
 
     pub fn close_sockets(&mut self) {
-        for pcb in self.entries.iter() {
-            if pcb.sender.is_some() {
-                pcb.sender.as_ref().unwrap().send(false).unwrap();
-            }
+        for pcb in self.entries.iter_mut() {
+            pcb.release();
         }
     }
 }
@@ -340,7 +341,7 @@ pub fn retransmit(pcbs: &mut TcpPcbs, device: &mut NetDevice, contexts: &mut Pro
         }
         if pcb.state == TcpPcbState::TimeWait {
             if pcb.wait_time.unwrap().elapsed().unwrap().as_micros() > 0 {
-                println!(
+                info!(
                     "TCP: timewait has elapsed for local = {:?} remote = {:?}",
                     ip_addr_to_str(pcb.local.address),
                     ip_addr_to_str(pcb.remote.address)
@@ -349,12 +350,9 @@ pub fn retransmit(pcbs: &mut TcpPcbs, device: &mut NetDevice, contexts: &mut Pro
                 continue;
             }
         }
-        for queue in pcb.data_queue.entries.iter_mut() {
+        while let Some(queue) = pcb.data_queue.entries.pop_front() {
             if queue.first_sent_at.elapsed().unwrap().as_secs() >= TCP_RETRANSMIT_TIMOUT_SEC {
-                pcb.state = TcpPcbState::Closed;
-                if pcb.sender.is_some() {
-                    pcb.sender.as_ref().unwrap().send(false).unwrap();
-                }
+                pcb.release();
                 continue;
             }
             let timeout = queue
@@ -363,7 +361,7 @@ pub fn retransmit(pcbs: &mut TcpPcbs, device: &mut NetDevice, contexts: &mut Pro
                 .unwrap();
             if timeout.elapsed().is_err() {
                 // elapsed errors when time is before now
-                println!("TCP: retransmitting...");
+                info!("TCP: retransmitting a segment...");
                 output_segment(
                     queue.seq_num,
                     pcb.recv_context.next,
@@ -480,20 +478,20 @@ fn segment_arrives(
     let pcb_id;
     let pcb_mode;
 
-    println!("TCP: segment flag byte = {:#010b}", flags);
+    debug!("TCP: segment flag byte = {:#010b}", flags);
 
     {
         let pcb_opt = pcbs.tcp_pcbs.select(&local, Some(&remote));
         // No PCB or PCB is closed state
         if pcb_opt.is_none() || pcb_opt.as_ref().unwrap().1.state == TcpPcbState::Closed {
-            println!("TCP: segment received for new/closed connection.");
+            info!("TCP: segment received for new/closed connection.");
             if tcp_flag_exists(flags, TcpFlag::RST) {
-                println!("TCP: RST found. Returning...");
+                info!("TCP: RST found. Returning...");
                 return;
             }
             // Segment to unused port. Return RST.
             if tcp_flag_exists(flags, TcpFlag::ACK) {
-                println!("TCP: ACK found. Replying with RST...");
+                info!("TCP: ACK found. Replying with RST...");
                 output_segment(
                     seg.ack_num,
                     0,
@@ -506,7 +504,7 @@ fn segment_arrives(
                     contexts,
                 );
             } else {
-                println!("TCP: non-ACK received. Replying RST-ACK...");
+                info!("TCP: non-ACK received. Replying RST-ACK...");
                 output_segment(
                     0,
                     seg.seq_num + (seg.len as u32),
@@ -531,14 +529,14 @@ fn segment_arrives(
 
     // Listen state
     if pcb_state == TcpPcbState::Listen {
-        println!("TCP: connection in LISTEN state.");
+        info!("TCP: connection in LISTEN state.");
         // Check for reset first.
         if tcp_flag_exists(flags, TcpFlag::RST) {
             return;
         }
         // Secondly check for ack.
         if tcp_flag_exists(flags, TcpFlag::ACK) {
-            println!("TCP: ACK found. Replying with RST...");
+            info!("TCP: ACK found. Replying with RST...");
             output_segment(
                 seg.ack_num,
                 0,
@@ -554,7 +552,7 @@ fn segment_arrives(
         }
         // Third check on SYN
         if tcp_flag_exists(flags, TcpFlag::SYN) {
-            println!("TCP: SYN found.");
+            info!("TCP: SYN found.");
             // Ignore: security / compartment / precedence checks
             let pcb = {
                 if pcb_mode == TcpPcbMode::Socket {
@@ -575,7 +573,7 @@ fn segment_arrives(
             pcb.recv_context.window = PCB_BUF_LEN as u16;
             pcb.recv_context.next = seg.seq_num + 1;
             pcb.iss = rand::thread_rng().gen_range(0..u32::MAX);
-            println!("TCP: Replying with SYN-ACK...");
+            info!("TCP: Replying with SYN-ACK...");
             output(
                 pcb,
                 TcpFlag::SYN as u8 | TcpFlag::ACK as u8,
@@ -593,12 +591,12 @@ fn segment_arrives(
         // Fourth: other text or control
         return; // drop segment
     } else if pcb_state == TcpPcbState::SynSent {
-        println!("TCP: connection in SYN-SENT state.");
+        info!("TCP: connection in SYN-SENT state.");
         let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
         // First: check ACK
         if tcp_flag_exists(flags, TcpFlag::ACK) {
             if seg.ack_num <= pcb.iss || seg.ack_num > pcb.send_context.next {
-                println!("TCP: ACK found with glitches. Replying with RST...");
+                info!("TCP: ACK found with glitches. Replying with RST...");
                 output_segment(
                     seg.ack_num,
                     0,
@@ -619,7 +617,7 @@ fn segment_arrives(
         // Second: check RST
         if tcp_flag_exists(flags, TcpFlag::RST) {
             if acceptable {
-                println!("TCP: RST found. Closing connection.");
+                info!("TCP: RST found. Closing connection.");
                 pcb.release();
             }
             return;
@@ -627,7 +625,7 @@ fn segment_arrives(
         // Third: check security and precedence (ignored)
         // Fourth: check SYN
         if tcp_flag_exists(flags, TcpFlag::SYN) {
-            println!("TCP: SYN found.");
+            info!("TCP: SYN found.");
             pcb.recv_context.next = seg.seq_num + 1;
             pcb.irs = seg.seq_num;
             if acceptable {
@@ -636,19 +634,21 @@ fn segment_arrives(
             }
             if pcb.send_context.una > pcb.iss {
                 pcb.state = TcpPcbState::Established;
-                println!("TCP: send.una > iss = Established. Replying with ACK...");
+                info!("TCP: send.una > iss = Established. Replying with ACK...");
                 output(pcb, TcpFlag::ACK as u8, vec![], device, contexts);
                 // RFC793 does not specify, but send window initialization reqiured
                 pcb.send_context.window = seg.window;
                 pcb.send_context.wl1 = seg.seq_num;
                 pcb.send_context.wl2 = seg.ack_num;
                 if pcb.sender.is_some() {
-                    println!("TCP: waking up sleeping PCB...");
-                    pcb.sender.as_ref().unwrap().send(true).unwrap();
+                    info!("TCP: waking up sleeping PCB of open command...");
+                    if pcb.sender.as_ref().unwrap().send(true).is_err() {
+                        info!("TCP: PCB channel not listening.");
+                    };
                 }
                 // Ignore: continue to sixth check on URG
             } else {
-                println!("TCP: send.una <= iss = Syn-Received. Replying with SYN-ACK...");
+                info!("TCP: send.una <= iss = Syn-Received. Replying with SYN-ACK...");
                 pcb.state = TcpPcbState::SynReceived;
                 output(
                     pcb,
@@ -665,8 +665,8 @@ fn segment_arrives(
         return;
     }
 
-    println!(
-        "TCP: connection not in LISTEN or SYN-SENT state but in {:?}",
+    info!(
+        "TCP: connection checked for LISTEN or SYN-SENT state. It is in {:?}",
         pcb_state
     );
 
@@ -681,7 +681,7 @@ fn segment_arrives(
         || pcb_state == TcpPcbState::TimeWait
     {
         let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
-        println!(
+        info!(
             "TCP: PCB recv.window = {:x} recv.next = {:x}",
             pcb.recv_context.window, pcb.recv_context.next
         );
@@ -712,9 +712,9 @@ fn segment_arrives(
             }
         }
         if !acceptable {
-            println!("TCP: seq not acceptable.");
+            info!("TCP: seq not acceptable.");
             if tcp_flag_exists(flags, TcpFlag::RST) {
-                println!("TCP: RST found and sequence/window not acceptable. Replying with ACK...");
+                info!("TCP: RST found and sequence/window not acceptable. Replying with ACK...");
                 output(pcb, TcpFlag::ACK as u8, vec![], device, contexts);
             }
             return;
@@ -730,7 +730,7 @@ fn segment_arrives(
     // Second: check RST bit
     if pcb_state == TcpPcbState::SynReceived {
         if tcp_flag_exists(flags, TcpFlag::RST) {
-            println!("TCP: RST found for connection in SYN-RECEIVED state. Closing...");
+            info!("TCP: RST found for connection in SYN-RECEIVED state. Closing...");
             let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
             pcb.release();
             return;
@@ -741,7 +741,7 @@ fn segment_arrives(
         || pcb_state == TcpPcbState::CloseWait
     {
         if tcp_flag_exists(flags, TcpFlag::RST) {
-            println!("TCP: connection reset.");
+            info!("TCP: connection reset.");
             let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
             pcb.release();
             return;
@@ -750,7 +750,7 @@ fn segment_arrives(
         || pcb_state == TcpPcbState::LastAck
         || pcb_state == TcpPcbState::TimeWait
     {
-        println!("TCP: connection in final state. Closing...");
+        info!("TCP: connection in final state. Closing...");
         let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
         pcb.release();
         return;
@@ -769,7 +769,7 @@ fn segment_arrives(
         || pcb_state == TcpPcbState::TimeWait
     {
         if tcp_flag_exists(flags, TcpFlag::SYN) {
-            println!("TCP: SYN found. Connection reset.");
+            info!("TCP: SYN found. Connection reset.");
             let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
             pcb.release();
             return;
@@ -780,23 +780,25 @@ fn segment_arrives(
     if !tcp_flag_exists(flags, TcpFlag::ACK) {
         return; // drop segment
     }
-    println!("TCP: ACK found.");
+    info!("TCP: ACK found.");
     if pcb_state == TcpPcbState::SynReceived {
-        println!("TCP: connection in SYN-RECEIVED state.");
+        info!("TCP: connection in SYN-RECEIVED state.");
         let mut parent_id = None;
         {
             let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
             if pcb.send_context.una <= seg.ack_num && seg.ack_num <= pcb.send_context.next {
-                println!("TCP: send.una <= seg.ack = ESTABLISHED. Waking up sleeping PCB...");
+                info!("TCP: send.una <= seg.ack = ESTABLISHED. Waking up sleeping PCB...");
                 pcb.state = TcpPcbState::Established;
                 if pcb.sender.is_some() {
-                    pcb.sender.as_ref().unwrap().send(true).unwrap();
+                    if pcb.sender.as_ref().unwrap().send(true).is_err() {
+                        warn!("TCP: PCB channel not listening.");
+                    }
                 }
                 if pcb.parent_id.is_some() {
                     parent_id = pcb.parent_id;
                 }
             } else {
-                println!("TCP: send.una > seg.ack = not ESTABLISHED. Replying with RST...");
+                info!("TCP: send.una > seg.ack = not ESTABLISHED. Replying with RST...");
                 output_segment(
                     seg.ack_num,
                     0,
@@ -812,11 +814,13 @@ fn segment_arrives(
             }
         }
         if parent_id.is_some() {
-            println!("TCP: parent PCB found. Waking up sleeping parent PCB...");
+            info!("TCP: parent PCB found. Waking up sleeping parent PCB...");
             let parent_pcb = pcb_by_id(&mut pcbs.tcp_pcbs, parent_id.unwrap());
             parent_pcb.add_backlog(pcb_id);
             if parent_pcb.sender.is_some() {
-                parent_pcb.sender.as_ref().unwrap().send(true).unwrap();
+                if parent_pcb.sender.as_ref().unwrap().send(true).is_err() {
+                    warn!("TCP: parent PCB channel not listening.");
+                }
             }
         }
     } else if pcb_state == TcpPcbState::Established
@@ -828,7 +832,7 @@ fn segment_arrives(
         let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
         // Received ack including unacked sequence number
         if pcb.send_context.una < seg.ack_num && seg.ack_num <= pcb.send_context.next {
-            println!(
+            info!(
                 "TCP: received ack including unacked seq number. Updating send.una with seg.ack."
             );
             pcb.send_context.una = seg.ack_num;
@@ -846,22 +850,24 @@ fn segment_arrives(
         } else if seg.ack_num < pcb.send_context.una {
             // Ignore: already checked ack
         } else if seg.ack_num > pcb.send_context.next {
-            println!("TCP: seg.ack > send.next. Replying with ACK...");
+            info!("TCP: seg.ack > send.next. Replying with ACK...");
             output(pcb, TcpFlag::ACK as u8, vec![], device, contexts);
             return;
         }
         if pcb_state == TcpPcbState::Closing {
             if seg.ack_num == pcb.send_context.next {
-                println!("TCP: connection in CLOSING state and seg.ack == send.next. Waking up PCB with wait time...");
+                info!("TCP: connection in CLOSING state and seg.ack == send.next. Waking up PCB with wait time...");
                 pcb.state = TcpPcbState::TimeWait;
                 set_wait_time(pcb);
                 if pcb.sender.is_some() {
-                    pcb.sender.as_ref().unwrap().send(true).unwrap();
+                    if pcb.sender.as_ref().unwrap().send(true).is_err() {
+                        warn!("TCP: PCB channel not listening.");
+                    };
                 }
             }
         }
     } else if pcb_state == TcpPcbState::LastAck {
-        println!("TCP: connection in LAST-ACK state.");
+        info!("TCP: connection in LAST-ACK state.");
         let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
         if seg.ack_num == pcb.send_context.next {
             pcb.release();
@@ -869,7 +875,7 @@ fn segment_arrives(
         return;
     } else if pcb_state == TcpPcbState::TimeWait {
         if tcp_flag_exists(flags, TcpFlag::FIN) {
-            println!("TCP: FIN found for connection in TIME-WAIT state. Extending wait time...");
+            info!("TCP: FIN found for connection in TIME-WAIT state. Extending wait time...");
             let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
             set_wait_time(pcb);
         }
@@ -884,14 +890,16 @@ fn segment_arrives(
     {
         let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
         if len > 0 {
-            println!("TCP: received data. Updating window, replying with ACK and waking up PCB...");
+            info!("TCP: received data. Updating window, replying with ACK and waking up PCB...");
             // memcpy(pcb->buf + (sizeof(pcb->buf) - pcb->rcv.wnd), data, len);
             pcb.buf.append(&mut data.to_vec());
             pcb.recv_context.next = seg.seq_num + seg.len as u32;
             pcb.recv_context.window -= len as u16;
             output(pcb, TcpFlag::ACK as u8, vec![], device, contexts);
             if pcb.sender.is_some() {
-                pcb.sender.as_ref().unwrap().send(true).unwrap();
+                if pcb.sender.as_ref().unwrap().send(true).is_err() {
+                    warn!("TCP: PCB channel in receive not listening.");
+                };
             }
         }
     } else if pcb_state == TcpPcbState::CloseWait
@@ -904,7 +912,7 @@ fn segment_arrives(
 
     // Eighth: check FIN
     if tcp_flag_exists(flags, TcpFlag::FIN) {
-        println!("TCP: FIN flag found.");
+        info!("TCP: FIN flag found.");
         let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
         if pcb_state == TcpPcbState::Closed
             || pcb_state == TcpPcbState::Listen
@@ -913,27 +921,29 @@ fn segment_arrives(
             return; // drop segment
         }
 
-        println!("TCP: sending ACK...");
+        info!("TCP: sending ACK...");
         pcb.recv_context.next = seg.seq_num + 1;
         output(pcb, TcpFlag::ACK as u8, vec![], device, contexts);
 
         if pcb_state == TcpPcbState::SynReceived || pcb_state == TcpPcbState::Established {
-            println!("TCP: connection in SYN-RECEIVED / ESTABLISHED state. Moving to CLOSE-WAIT and waking up PCB...");
+            info!("TCP: connection in SYN-RECEIVED / ESTABLISHED state. Moving to CLOSE-WAIT and waking up PCB...");
             pcb.state = TcpPcbState::CloseWait;
             if pcb.sender.is_some() {
-                pcb.sender.as_ref().unwrap().send(true).unwrap();
+                if pcb.sender.as_ref().unwrap().send(true).is_err() {
+                    warn!("TCP: PCB channel not listening.");
+                }
             }
         } else if pcb_state == TcpPcbState::FinWait1 {
             if seg.ack_num == pcb.send_context.next {
-                println!("TCP: connection in FIN-WAIT1 state and seg.ack == send.next. Moving to TIME-WAIT and waking up PCB...");
+                info!("TCP: connection in FIN-WAIT1 state and seg.ack == send.next. Moving to TIME-WAIT and waking up PCB...");
                 pcb.state = TcpPcbState::TimeWait;
                 set_wait_time(pcb);
             } else {
-                println!("TCP: connection in FIN-WAIT1 state and seg.ack != send.next. Moving to CLOSING...");
+                info!("TCP: connection in FIN-WAIT1 state and seg.ack != send.next. Moving to CLOSING...");
                 pcb.state = TcpPcbState::Closing;
             }
         } else if pcb_state == TcpPcbState::FinWait2 {
-            println!("TCP: connection in FIN-WAIT2 state. Moving to TIME-WAIT...");
+            info!("TCP: connection in FIN-WAIT2 state. Moving to TIME-WAIT...");
             pcb.state = TcpPcbState::TimeWait;
         } else if pcb_state == TcpPcbState::CloseWait {
             // Remain in CLOSE-WAIT state.
@@ -976,7 +986,7 @@ pub fn input(
     let pseudo_sum = !cksum16(pseudo_hdr_bytes, pseudo_hdr_bytes.len(), 0);
     let sum = cksum16(data, len, pseudo_sum as u32);
     if sum != 0 {
-        println!("TCP input checksum failure: value = {sum}");
+        error!("TCP input checksum failure: value = {sum}");
         return Err(());
     }
 
@@ -985,7 +995,7 @@ pub fn input(
         panic!("TCP input: only unicast is supported.");
     }
 
-    println!(
+    info!(
         "TCP input: source port = {:?} destination port: {:?}",
         be_to_le_u16(header.src_port),
         be_to_le_u16(header.dst_port)
@@ -1015,7 +1025,7 @@ pub fn input(
         urg_ptr: be_to_le_u16(header.urg_ptr),
     };
 
-    println!("TCP: received segment = {:?}", seg);
+    info!("TCP: received segment = {:?}", seg);
 
     segment_arrives(
         seg,
@@ -1067,13 +1077,14 @@ pub fn rfc793_open(
         }
 
         if !active {
-            println!(
-                "TCP: passive open with local = {:?}",
-                ip_addr_to_str(pcb.local.address)
+            info!(
+                "TCP: passive open with local IP = {:?} port = {:?}",
+                ip_addr_to_str(pcb.local.address),
+                be_to_le_u16(pcb.local.port)
             );
             pcb.state = TcpPcbState::Listen;
         } else {
-            println!(
+            info!(
                 "TCP: active open with local = {:?} and remote = {:?}",
                 ip_addr_to_str(pcb.local.address),
                 ip_addr_to_str(pcb.remote.address)
@@ -1106,8 +1117,7 @@ pub fn rfc793_open(
             }
         }
     }
-
-    println!("TCP rfc793_open: connection established.");
+    info!("TCP rfc793_open: connection established.");
     Some(pcb_id)
 }
 
@@ -1210,7 +1220,7 @@ pub fn bind(pcb_id: usize, local: IPEndpoint, pcbs: &mut ControlBlocks) {
         panic!("TCP: PCB was not open in socket mode.");
     }
     pcb.local = local;
-    println!(
+    info!(
         "TCP: bound local address = {:?} port = {:?}",
         ip_addr_to_str(pcb.local.address),
         pcb.local.port
@@ -1254,7 +1264,7 @@ pub fn accept(
                 let pcbs = &mut pcbs_arc.lock().unwrap();
                 let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
                 if pcb.state == TcpPcbState::Closed {
-                    println!("TCP accept: PCB is in closed state.");
+                    warn!("TCP accept: PCB is in closed state.");
                     return None;
                 }
                 backlog_id = next_backlog;
@@ -1297,13 +1307,13 @@ pub fn send(
             pcb_send_una = pcb.send_context.una;
         }
         if pcb_state == TcpPcbState::Closed {
-            println!("TCP: connection does not exist.");
+            error!("TCP: connection does not exist.");
             return None;
         } else if pcb_state == TcpPcbState::Listen {
-            println!("TCP: this connection is passive.");
+            error!("TCP: this connection is passive.");
             return None;
         } else if pcb_state == TcpPcbState::SynSent || pcb_state == TcpPcbState::SynReceived {
-            println!("TCP: insufficient resources.");
+            error!("TCP: insufficient resources.");
             return None;
         } else if pcb_state == TcpPcbState::Established || pcb_state == TcpPcbState::CloseWait {
             let mss = device.mtu - (IP_HEADER_MIN_SIZE + size_of::<TcpHeader>());
@@ -1341,10 +1351,10 @@ pub fn send(
             || pcb_state == TcpPcbState::LastAck
             || pcb_state == TcpPcbState::TimeWait
         {
-            println!("TCP: connection is closing.");
+            warn!("TCP: connection is closing.");
             return None;
         } else {
-            println!("TCP: unknown state.");
+            warn!("TCP: unknown state.");
             return None;
         }
     }
@@ -1367,20 +1377,20 @@ pub fn receive(pcb_id: usize, size: usize, pcbs_arc: Arc<Mutex<ControlBlocks>>) 
 
     loop {
         if pcb_state == TcpPcbState::Closed {
-            println!("TCP: connection does not exist.");
+            error!("TCP: connection does not exist.");
             return None;
         } else if pcb_state == TcpPcbState::Listen
             || pcb_state == TcpPcbState::SynSent
             || pcb_state == TcpPcbState::SynReceived
         {
-            println!("TCP: insufficient resources.");
+            error!("TCP: insufficient resources.");
             return None;
         } else if pcb_state == TcpPcbState::Established
             || pcb_state == TcpPcbState::FinWait1
             || pcb_state == TcpPcbState::FinWait2
         {
             if pcb_recv_window >= pcb_buf_len {
-                println!("TCP: sleeping for incoming data...");
+                info!("TCP: sleeping for incoming data...");
                 if !receiver.recv().unwrap() {
                     return None;
                 }
@@ -1390,6 +1400,7 @@ pub fn receive(pcb_id: usize, size: usize, pcbs_arc: Arc<Mutex<ControlBlocks>>) 
                 pcb_recv_window = pcb.recv_context.window as usize;
                 remain = Some(pcb_buf_len - pcb_recv_window);
             } else {
+                info!("TCP: buffer size > recv.window...");
                 break;
             }
         } else if pcb_state == TcpPcbState::CloseWait {
@@ -1402,19 +1413,20 @@ pub fn receive(pcb_id: usize, size: usize, pcbs_arc: Arc<Mutex<ControlBlocks>>) 
             || pcb_state == TcpPcbState::LastAck
             || pcb_state == TcpPcbState::TimeWait
         {
-            println!("TCP: connection closing.");
+            info!("TCP: connection closing.");
         } else {
-            println!("TCP: unknown state.");
+            warn!("TCP: unknown state.");
         }
-        println!("TCP receive: retrying...");
+        debug!("TCP receive: retrying...");
     }
     let pcbs = &mut pcbs_arc.lock().unwrap();
     let pcb = pcb_by_id(&mut pcbs.tcp_pcbs, pcb_id);
+    let buf_len = pcb.buf.len();
     let len = {
         if remain.is_none() {
-            size
+            cmp::min(buf_len, size)
         } else {
-            cmp::min(size, remain.unwrap())
+            cmp::min(buf_len, cmp::min(size, remain.unwrap()))
         }
     };
     let data = pcb.buf[..len].to_vec();

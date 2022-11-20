@@ -1,7 +1,7 @@
-use std::fs::File;
-
 pub mod pcap;
 pub mod tap;
+
+use std::fs::File;
 
 #[derive(Debug)]
 pub enum DriverType {

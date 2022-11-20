@@ -1,5 +1,5 @@
 [package]
-name = "rust-tcp-ip"
+name = "rust-user-net"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,3 +11,6 @@ nix = "0.25.0"
 ifstructs = "0.1.1"
 ioctl = { version = "0.6", package = "ioctl-sys" }
 rand = "0.8.5"
+log = "0.4"
+simplelog = "^0.12.0"
+clap = { version = "4.0.26", features = ["derive"] }

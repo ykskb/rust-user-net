@@ -1,7 +1,6 @@
 use crate::devices::ethernet;
 use crate::devices::loopback;
 use crate::devices::{NetDeviceType, NetDevices};
-use crate::protocols::arp::arp_resolve;
 use crate::protocols::arp::ArpTable;
 use crate::protocols::ip::icmp;
 use crate::protocols::ip::ip_addr_to_bytes;
@@ -13,7 +12,10 @@ use crate::protocols::ip::{
 };
 use crate::protocols::{ControlBlocks, NetProtocol, NetProtocols, ProtocolContexts, ProtocolType};
 use crate::util::le_to_be_u32;
+use clap::{Args, Parser, Subcommand};
+use log::{info, warn};
 use std::process;
+use std::str;
 use std::sync::Mutex;
 use std::{
     sync::{
@@ -39,6 +41,10 @@ pub struct NetApp {
 
 impl NetApp {
     pub fn new() -> NetApp {
+        // Args
+        let args = Cli::parse();
+
+        // Setups
         let mut devices = NetDevices::new();
         let mut ip_routes = IPRoutes::new();
         // Loopback device
@@ -95,147 +101,46 @@ impl NetApp {
         }
     }
 
-    pub fn run(&self, receiver: mpsc::Receiver<()>) -> JoinHandle<()> {
-        let devices_arc = self.devices.clone();
-        let protocols_arc = self.protocols.clone();
-        let contexts_arc = self.contexts.clone();
-        let pcbs_arc = self.pcbs.clone();
-        let mut soc_opt = None;
-
-        thread::spawn(move || loop {
-            // initial wait
-            println!("loop sleeping for 2s...");
-            thread::sleep(Duration::from_millis(2000));
-
-            // Termination check
-            match receiver.try_recv() {
-                Ok(_) | Err(TryRecvError::Disconnected) => {
-                    println!("App thread Terminating.");
-                    break;
-                }
-                Err(TryRecvError::Empty) => {}
-            }
-
-            let do_test = true;
-            if !do_test {
-                continue;
-            }
-
-            let data: Vec<u8> = vec![
-                0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x30, 0x21, 0x40, 0x23, 0x24,
-                0x25, 0x5e, 0x26, 0x2a, 0x28, 0x29, 0x41, 0x42, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67,
-                0x68, 0x69,
-            ];
-            let data_len = data.len();
-
-            if soc_opt.is_none() {
-                // TEST: TCP connection
-                let active = true;
-                let local = {
-                    if active {
-                        IPEndpoint::new_from_str("192.0.2.2", 7)
-                    } else {
-                        IPEndpoint::new_from_str("0.0.0.0", 7)
+    pub fn run(&mut self, receiver: mpsc::Receiver<()>) -> JoinHandle<()> {
+        let args = Cli::parse();
+        match args.command {
+            Commands::Tcp(tcp) => {
+                let tcp_command = tcp.command.unwrap();
+                match tcp_command {
+                    EndPointCommand::Send {
+                        target_ip,
+                        target_port,
+                        data,
+                    } => {
+                        return self.tcp_send_command(target_ip, target_port, data, receiver);
+                    }
+                    EndPointCommand::Receive {
+                        local_ip,
+                        local_port,
+                    } => {
+                        return self.tcp_receive_command(receiver);
                     }
                 };
-                let remote = {
-                    if active {
-                        Some(IPEndpoint::new_from_str("192.0.2.1", 10007))
-                    } else {
-                        None
-                    }
-                };
-
-                soc_opt = Some(
-                    tcp::rfc793_open(
-                        local,
-                        remote,
-                        active,
-                        pcbs_arc.clone(),
-                        devices_arc.clone(),
-                        contexts_arc.clone(),
-                    )
-                    .unwrap(),
-                );
-
-                // TEST: UDP receive
-                // soc_opt = {
-                //     let pcbs = &mut pcbs_arc.lock().unwrap();
-                //     let soc = udp::open(&mut pcbs.udp_pcbs);
-                //     let local = IPEndpoint::new_from_str("0.0.0.0", 7);
-                //     udp::bind(&mut pcbs.udp_pcbs, soc, local);
-                //     Some(soc)
-                // };
             }
-            {
-                // let pcbs = &mut pcbs_arc.lock().unwrap();
-                // let devices = &mut devices_arc.lock().unwrap();
-                // let contexts = &mut contexts_arc.lock().unwrap();
-                // let eth_device = devices.get_mut_by_type(NetDeviceType::Ethernet).unwrap();
-                let soc = soc_opt.unwrap();
-
-                // TEST: ICMP output
-
-                // let pid = process::id() % u16::MAX as u32;
-                // let values = le_to_be_u32(pid << 16 | 1);
-                // let icmp_type_echo: u8 = 8;
-                // let ip_any = 0;
-                // let dst = ip_addr_to_bytes("8.8.8.8").unwrap();
-                // icmp::output(
-                //     icmp_type_echo,
-                //     0,
-                //     values,
-                //     data,
-                //     data_len,
-                //     ip_any,
-                //     dst,
-                //     eth_device,
-                //     contexts,
-                //     pcbs,
-                // );
-
-                // TEST: UDP send
-
-                // let remote = IPEndpoint::new_from_str("192.0.2.1", 10007);
-                // udp::send_to(soc, data, remote, eth_device, contexts, pcbs);
-
-                // TEST: UDP receive & send
-
-                // let received = udp::receive_from(soc, pcbs_arc.clone());
-                // if received.is_some() {
-                //     let data_entry = received.unwrap();
-                //     println!(
-                //         "Sock num: {soc} Received: {:?} from {:?}",
-                //         data_entry.data,
-                //         ip_addr_to_str(data_entry.remote_endpoint.address)
-                //     );
-                //     {
-                //         udp::send_to(
-                //             soc,
-                //             data_entry.data,
-                //             data_entry.remote_endpoint,
-                //             eth_device,
-                //             contexts,
-                //             pcbs,
-                //         );
-                //     }
-                // }
-
-                // TEST: TCP receive & send
-
-                println!("APP: starting TCP receive...");
-                let received = tcp::receive(soc, 2048, pcbs_arc.clone()).unwrap();
-                println!("App: TCP received = {:02x?}", received);
-                {
-                    let devices = &mut devices_arc.lock().unwrap();
-                    let contexts = &mut contexts_arc.lock().unwrap();
-                    let eth_device = devices.get_mut_by_type(NetDeviceType::Ethernet).unwrap();
-
-                    println!("APP: sending data back...");
-                    tcp::send(soc, received, eth_device, contexts, &mut pcbs_arc.clone());
+            Commands::Udp(udp) => {
+                let udp_command = udp.command.unwrap();
+                match udp_command {
+                    EndPointCommand::Send {
+                        target_ip,
+                        target_port,
+                        data,
+                    } => {
+                        return self.udp_send_command(target_ip, target_port, data, receiver);
+                    }
+                    EndPointCommand::Receive {
+                        local_ip,
+                        local_port,
+                    } => {
+                        return self.udp_receive_command(receiver);
+                    }
                 }
             }
-        })
+        }
     }
 
     pub fn close_sockets(&mut self) {
@@ -269,7 +174,7 @@ impl NetApp {
             // Termination check
             match receiver.try_recv() {
                 Ok(_) | Err(TryRecvError::Disconnected) => {
-                    println!("TCP transmit thread Terminating.");
+                    info!("TCP transmit thread Terminating.");
                     break;
                 }
                 Err(TryRecvError::Empty) => {}
@@ -284,4 +189,271 @@ impl NetApp {
             }
         })
     }
+
+    // CLI command implementations
+
+    fn tcp_send_command(
+        &mut self,
+        target_ip: String,
+        target_port: u16,
+        data: String,
+        receiver: mpsc::Receiver<()>,
+    ) -> JoinHandle<()> {
+        let pcbs_arc = self.pcbs.clone();
+        let devices_arc = self.devices.clone();
+        let contexts_arc = self.contexts.clone();
+        let mut sock_opt = None;
+        let mut request_sent = false;
+        thread::spawn(move || loop {
+            // Termination check
+            match receiver.try_recv() {
+                Ok(_) | Err(TryRecvError::Disconnected) => {
+                    info!("App: thread terminating.");
+                    break;
+                }
+                Err(TryRecvError::Empty) => {}
+            }
+            if sock_opt.is_none() {
+                sock_opt = {
+                    let local = IPEndpoint::new_from_str("192.0.2.2", 7);
+                    let remote = IPEndpoint::new_from_str(&target_ip, target_port);
+                    tcp::rfc793_open(
+                        local,
+                        Some(remote),
+                        true,
+                        pcbs_arc.clone(),
+                        devices_arc.clone(),
+                        contexts_arc.clone(),
+                    )
+                }
+            }
+            if !request_sent {
+                info!("CLI: sending request");
+                let devices = &mut devices_arc.lock().unwrap();
+                let contexts = &mut contexts_arc.lock().unwrap();
+                let eth_device = devices.get_mut_by_type(NetDeviceType::Ethernet).unwrap();
+
+                let req = data
+                    .replace("\\r", "\r")
+                    .replace("\\n", "\n")
+                    .as_bytes()
+                    .to_vec(); //  "GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n"
+                tcp::send(
+                    sock_opt.unwrap(),
+                    req,
+                    eth_device,
+                    contexts,
+                    &mut pcbs_arc.clone(),
+                );
+                request_sent = true;
+            }
+            info!("CLI: starting TCP receive...");
+            let receive_res = tcp::receive(sock_opt.unwrap(), 2048, pcbs_arc.clone());
+            if let Some(received) = receive_res {
+                log_data(&received[..]);
+            }
+        })
+    }
+
+    fn tcp_receive_command(&mut self, receiver: mpsc::Receiver<()>) -> JoinHandle<()> {
+        let pcbs_arc = self.pcbs.clone();
+        let devices_arc = self.devices.clone();
+        let contexts_arc = self.contexts.clone();
+        let mut sock_opt = None;
+        thread::spawn(move || loop {
+            // Termination check
+            match receiver.try_recv() {
+                Ok(_) | Err(TryRecvError::Disconnected) => {
+                    info!("App: thread terminating.");
+                    break;
+                }
+                Err(TryRecvError::Empty) => {}
+            }
+            if sock_opt.is_none() {
+                sock_opt = {
+                    let local = IPEndpoint::new_from_str("0.0.0.0", 7);
+                    tcp::rfc793_open(
+                        local,
+                        None,
+                        false,
+                        pcbs_arc.clone(),
+                        devices_arc.clone(),
+                        contexts_arc.clone(),
+                    )
+                }
+            }
+            if sock_opt.is_none() {
+                info!("CLI: interrupted before establishing any connection.");
+                return;
+            }
+            info!("CLI: starting TCP receive...");
+            let receive_res = tcp::receive(sock_opt.unwrap(), 2048, pcbs_arc.clone());
+            if let Some(received) = receive_res {
+                log_data(&received[..]);
+            }
+        })
+    }
+
+    fn udp_send_command(
+        &mut self,
+        target_ip: String,
+        target_port: u16,
+        data: String,
+        receiver: mpsc::Receiver<()>,
+    ) -> JoinHandle<()> {
+        let pcbs_arc = self.pcbs.clone();
+        let devices_arc = self.devices.clone();
+        let contexts_arc = self.contexts.clone();
+        let mut soc_opt = None;
+        let mut sent_count = 0;
+
+        thread::spawn(move || loop {
+            // Termination check
+            match receiver.try_recv() {
+                Ok(_) | Err(TryRecvError::Disconnected) => {
+                    info!("App: thread terminating.");
+                    break;
+                }
+                Err(TryRecvError::Empty) => {}
+            }
+            if soc_opt.is_none() {
+                soc_opt = {
+                    let pcbs = &mut pcbs_arc.lock().unwrap();
+                    let soc = udp::open(&mut pcbs.udp_pcbs);
+                    let local = IPEndpoint::new_from_str("0.0.0.0", 7);
+                    udp::bind(&mut pcbs.udp_pcbs, soc, local);
+                    Some(soc)
+                }
+            }
+            // send twice to wait for ARP response once
+            if sent_count < 2 {
+                let devices = &mut devices_arc.lock().unwrap();
+                let contexts = &mut contexts_arc.lock().unwrap();
+                let pcbs = &mut pcbs_arc.lock().unwrap();
+
+                let remote = IPEndpoint::new_from_str(&target_ip, target_port); // 192.0.2.1 10007
+                let eth_device = devices.get_mut_by_type(NetDeviceType::Ethernet).unwrap();
+                let req = data
+                    .replace("\\r", "\r")
+                    .replace("\\n", "\n")
+                    .as_bytes()
+                    .to_vec();
+
+                udp::send_to(soc_opt.unwrap(), req, remote, eth_device, contexts, pcbs);
+                sent_count += 1;
+            } else {
+                info!("CLI: starting UDP receive...");
+                let receive_res = udp::receive_from(soc_opt.unwrap(), pcbs_arc.clone());
+                if let Some(entry) = receive_res {
+                    log_data(&entry.data[..]);
+                }
+            }
+            // TODO: fix this hack to wait for ARP reply in signal thread
+            thread::sleep(Duration::from_secs(1));
+        })
+    }
+
+    fn udp_receive_command(&self, receiver: mpsc::Receiver<()>) -> JoinHandle<()> {
+        let pcbs_arc = self.pcbs.clone();
+        let mut soc_opt = None;
+        thread::spawn(move || loop {
+            // Termination check
+            match receiver.try_recv() {
+                Ok(_) | Err(TryRecvError::Disconnected) => {
+                    info!("App: thread terminating.");
+                    break;
+                }
+                Err(TryRecvError::Empty) => {}
+            }
+            if soc_opt.is_none() {
+                soc_opt = {
+                    let pcbs = &mut pcbs_arc.lock().unwrap();
+                    let soc = udp::open(&mut pcbs.udp_pcbs);
+                    let local = IPEndpoint::new_from_str("0.0.0.0", 7);
+                    udp::bind(&mut pcbs.udp_pcbs, soc, local);
+                    Some(soc)
+                }
+            }
+            info!("CLI: starting UDP receive...");
+            let receive_res = udp::receive_from(soc_opt.unwrap(), pcbs_arc.clone());
+            if let Some(entry) = receive_res {
+                log_data(&entry.data[..]);
+            }
+        })
+    }
+}
+
+fn log_data(data: &[u8]) {
+    let received_utf8 = str::from_utf8(data);
+    if let Ok(utf8_str) = received_utf8 {
+        info!("CLI: data received = {:?}", utf8_str);
+    } else {
+        warn!("CLI: UTF8 error. Data is {:02x?}", data);
+    }
+}
+// TEST: ICMP output
+
+// let pid = process::id() % u16::MAX as u32;
+// let values = le_to_be_u32(pid << 16 | 1);
+// let icmp_type_echo: u8 = 8;
+// let ip_any = 0;
+// let dst = ip_addr_to_bytes("8.8.8.8").unwrap();
+// icmp::output(
+//     icmp_type_echo,
+//     0,
+//     values,
+//     data,
+//     data_len,
+//     ip_any,
+//     dst,
+//     eth_device,
+//     contexts,
+//     pcbs,
+// );
+
+// CLI setup
+
+#[derive(Debug, Parser)]
+#[command(name = "rust-user-net")]
+#[command(about = "Network protocol stack in user space written in Rust.", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Debug, Subcommand)]
+enum Commands {
+    Tcp(Tcp),
+    Udp(Udp),
+}
+
+#[derive(Debug, Args)]
+#[command(args_conflicts_with_subcommands = true)]
+#[command(about = "Sends and/or receive TCP packets. `rust-user-net tcp -h` for more details.", long_about = None)]
+struct Tcp {
+    #[command(subcommand)]
+    command: Option<EndPointCommand>,
+}
+
+#[derive(Debug, Args)]
+#[command(args_conflicts_with_subcommands = true)]
+#[command(about = "Sends and/or receive UDP packets. `rust-user-net udp -h` for more details.", long_about = None)]
+struct Udp {
+    #[command(subcommand)]
+    command: Option<EndPointCommand>,
+}
+
+#[derive(Debug, Subcommand)]
+enum EndPointCommand {
+    #[command(about = "Sends a request with data and starts a receive loop printing each segment received. Ctrl+C to end.", long_about = None)]
+    Send {
+        target_ip: String,
+        target_port: u16,
+        data: String,
+    },
+    #[command(about = "Starts a receive loop printing out each segment received. Ctrl+C to end.", long_about = None)]
+    Receive {
+        local_ip: String,
+        local_port: String,
+    },
 }

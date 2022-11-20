@@ -2,6 +2,8 @@ pub mod icmp;
 pub mod tcp;
 pub mod udp;
 
+use log::{error, info, trace, warn};
+
 use super::arp::arp_resolve;
 use super::{ControlBlocks, ProtocolContexts};
 use crate::net::{NetInterface, NetInterfaceFamily};
@@ -241,7 +243,7 @@ pub fn output(
     let route = route_opt.unwrap();
 
     if src != IP_ADDR_ANY && src != route.interface.unicast {
-        println!(
+        warn!(
             "Source address: {:?} not matching with interface unicast: {:?}",
             ip_addr_to_str(src),
             ip_addr_to_str(route.interface.unicast)
@@ -263,7 +265,7 @@ pub fn output(
     );
 
     let header_dst = header.dst;
-    println!(
+    trace!(
         "IP output: header destination = {:?} src = {:?} nexthop = {:?}",
         ip_addr_to_str(header_dst),
         ip_addr_to_str(header.src),
@@ -288,7 +290,7 @@ pub fn output(
             );
             if let Ok(result) = arp {
                 if result.is_none() {
-                    println!("Waiting for ARP reply...");
+                    info!("ARP: waiting for ARP reply...");
                     return Ok(());
                 }
                 hw_addr = result.unwrap();
@@ -302,25 +304,25 @@ pub fn output(
 fn check_ip_header(header: &IPHeader, data_len: usize, header_len: usize) -> Result<(), ()> {
     let ip_version = header.ver_len >> 4;
     if ip_version != IP_VERSION_4 {
-        println!("IP input: version error with value: {ip_version}");
+        error!("IP input: version error with value: {ip_version}");
         return Err(());
     }
     if data_len < header_len {
-        println!("IP input: header length error.");
+        error!("IP input: header length error.");
         return Err(());
     }
     if data_len < be_to_le_u16(header.total_len) as usize {
-        println!("IP input: total length error.");
+        error!("IP input: total length error.");
         return Err(());
     }
     let header_bytes = unsafe { to_u8_slice(header) };
     if cksum16(header_bytes, header_len, 0) != 0 {
-        println!("IP input: checksum error.");
+        error!("IP input: checksum error.");
         return Err(());
     }
     let offset = be_to_le_u16(header.offset);
     if offset & 0x2000 > 0 || offset & 0x1fff > 0 {
-        println!("IP input: fragment is not supported.");
+        error!("IP input: fragment is not supported.");
         return Err(());
     }
     Ok(())
@@ -341,7 +343,7 @@ pub fn input(
     if let Err(_e) = check_ip_header(&header, len, header_len) {
         return Err(());
     }
-    println!(
+    trace!(
         "IP input src: {:?} dst: {:?}",
         ip_addr_to_str(header.src),
         ip_addr_to_str(header.dst)

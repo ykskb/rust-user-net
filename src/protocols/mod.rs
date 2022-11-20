@@ -1,16 +1,16 @@
 pub mod arp;
 pub mod ip;
 
-use crate::{
-    devices::{NetDevice, NetDevices},
-    util::List,
-};
-use std::{collections::VecDeque, sync::Arc};
-
 use self::{
     arp::ArpTable,
     ip::{tcp::TcpPcbs, udp::UdpPcbs, IPHeaderIdManager, IPRoutes},
 };
+use crate::{
+    devices::{NetDevice, NetDevices},
+    util::List,
+};
+use log::{info, trace};
+use std::{collections::VecDeque, sync::Arc};
 
 #[derive(PartialEq, Debug)]
 pub enum ProtocolType {
@@ -93,18 +93,18 @@ impl NetProtocol {
         // let parsed = u32::from_be_bytes(data.as_slice());
         match self.protocol_type {
             ProtocolType::Arp => {
-                println!("Handling protocol: ARP | Received: {:02x?}", data);
+                trace!("Handling protocol: ARP | Received: {:02x?}", data);
                 arp::input(data, len, device, contexts).unwrap();
             }
             ProtocolType::IP => {
-                println!("Handling protocol: IP | Received: {:02x?}", data);
+                trace!("Handling protocol: IP | Received: {:02x?}", data);
                 ip::input(data, len, device, contexts, pcbs).unwrap();
             }
             ProtocolType::Unknown => {
-                println!("Protocol: Unknown | Received: {:x?}", data);
+                trace!("Protocol: Unknown | Received: {:x?}", data);
             }
         }
-        println!("__________Handled an input\n")
+        info!("Protocol: ----End of Input----\n")
     }
 }
 

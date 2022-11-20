@@ -8,6 +8,7 @@ use crate::{
     protocols::{ip::IPInterface, NetProtocols, ProtocolData, ProtocolType},
     util::List,
 };
+use log::{debug, error, info, trace, warn};
 use signal_hook::{consts::SIGUSR1, low_level::raise};
 use std::sync::Arc;
 
@@ -75,7 +76,7 @@ impl NetDevice {
     }
 
     pub fn register_interface(&mut self, interface: Arc<IPInterface>) {
-        println!(
+        info!(
             "Registering {:?} interface on device: {}\n",
             interface.interface.family, self.name
         );
@@ -136,7 +137,7 @@ impl NetDevice {
         };
 
         if incoming_data.is_none() {
-            println!("__________ISR called but no data\n");
+            debug!("ISR called but no data__________\n");
             return;
         }
 
@@ -149,8 +150,8 @@ impl NetDevice {
             }
         }
 
-        println!(
-            "__________ISR done: received protocol type: {:x?}\n",
+        debug!(
+            "ISR done: received protocol type: {:x?}__________\n",
             proto_type
         );
         raise(SIGUSR1).unwrap();

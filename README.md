@@ -45,7 +45,7 @@ HTTP (TCP: 80) request to `http://www.google.com`:
 rust-user-net tcp send 142.250.4.138 80 'GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n'
 ```
 
-### Local tests with netcat
+### Local Tests with netcat
 
 ```sh
 # TCP

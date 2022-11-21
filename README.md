@@ -1,34 +1,48 @@
 # rust-user-net
 
-Network protocol stack in user space written in Rust (study / experiment purpose)
+User-space network protocol stack written in Rust for study / experiment purpose
 
 Talks Ethernet / ARP / IP / ICMP / UDP / TCP through TAP device on Linux.
 
 <img src="./docs/images/google-example.gif" width="600px" />
 
-This project is by and large a Rust port of [microps](https://github.com/pandax381/microps) project written in C. Many thanks to [its owner](https://github.com/pandax381) for awesome codes and shared [decks](https://drive.google.com/drive/folders/1k2vymbC3vUk5CTJbay4LLEdZ9HemIpZe?usp=share_link) (Japanese).
+This project is by and large a Rust port of [microps](https://github.com/pandax381/microps) project written in C. Many thanks to [the owner](https://github.com/pandax381) for awesome codes and shared [decks](https://drive.google.com/drive/folders/1k2vymbC3vUk5CTJbay4LLEdZ9HemIpZe?usp=share_link) (Japanese).
 
-### High level view
+### High-level View
 
 <img src="./docs/images/overview.png" width="400px" />
 
-### Example
+### Setup and Usage
 
-Sends a HTTP (TCP:80) request to `http://www.google.com` and receive a response:
-
-```sh
-rust-user-net tcp send 142.250.4.138 80 'GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n'
-```
-
-### Setup
+- Built and tested on Ubuntu 22.04
 
 ```sh
-# TAP device setup (will be reset on reboot)
 cd rust-user-net
+
+# Build
+cargo build
+
+# TAP device setup (will be reset on reboot)
 ./set_tap.sh
 
-# If you want rust-user-net to connect to Internet
+# If you want rust-user-net to connect to Internet:
+# Output interface name is assumed to be `wlp0s20f3`.
+# Please update it if it's different in your machine.
 ./set_forward.sh
+
+# Show help
+./rust-user-net -h
+./rust-user-net tcp -h
+./rust-user-net tcp send -h
+```
+
+### Example
+
+HTTP (TCP: 80) request to `http://www.google.com`:
+
+```sh
+# Send command sends a request and gets into receive loop
+rust-user-net tcp send 142.250.4.138 80 'GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n'
 ```
 
 ### Local tests with netcat

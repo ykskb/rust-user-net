@@ -1,16 +1,13 @@
 use super::{ControlBlocks, ProtocolContexts};
 use super::{IPAdress, IPEndpoint, IPInterface, IPProtocolType, IP_ADDR_ANY, IP_HEADER_MIN_SIZE};
 use crate::devices::NetDevices;
-use crate::protocols::arp::arp_resolve;
 use crate::{
     devices::NetDevice,
     protocols::ip::ip_addr_to_str,
-    util::{
-        be_to_le_u16, be_to_le_u32, bytes_to_struct, cksum16, le_to_be_u16, le_to_be_u32,
-        to_u8_slice,
-    },
+    utils::byte::{be_to_le_u16, be_to_le_u32, le_to_be_u16, le_to_be_u32},
+    utils::{bytes_to_struct, cksum16, to_u8_slice},
 };
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, warn};
 use rand::Rng;
 use std::{
     cmp,
@@ -573,7 +570,7 @@ fn segment_arrives(
             pcb.recv_context.window = PCB_BUF_LEN as u16;
             pcb.recv_context.next = seg.seq_num + 1;
             pcb.iss = rand::thread_rng().gen_range(0..u32::MAX);
-            info!("TCP: Replying with SYN-ACK...");
+            info!("TCP: replying with SYN-ACK...");
             output(
                 pcb,
                 TcpFlag::SYN as u8 | TcpFlag::ACK as u8,

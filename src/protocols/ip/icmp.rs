@@ -2,7 +2,7 @@ use super::{IPAdress, IPInterface, IPProtocolType};
 use crate::{
     devices::NetDevice,
     protocols::ip::{ControlBlocks, ProtocolContexts},
-    util::{bytes_to_struct, cksum16, to_u8_slice},
+    utils::{bytes_to_struct, cksum16, to_u8_slice},
 };
 use log::{error, info};
 use std::mem::size_of;
@@ -71,7 +71,7 @@ pub fn input(
 
     let sum = cksum16(data, len, 0);
     if sum != 0 {
-        error!("Checksum failed: {sum}");
+        error!("ICMP: checksum failed: {sum}");
         return Err(());
     }
 

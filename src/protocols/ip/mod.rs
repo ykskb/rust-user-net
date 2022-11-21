@@ -9,7 +9,9 @@ use super::{ControlBlocks, ProtocolContexts};
 use crate::net::{NetInterface, NetInterfaceFamily};
 use crate::{
     devices::{ethernet::ETH_ADDR_LEN, NetDevice, DEVICE_FLAG_NEED_ARP},
-    util::{be_to_le_u16, be_to_le_u32, bytes_to_struct, cksum16, le_to_be_u16, to_u8_slice, List},
+    utils::byte::{be_to_le_u16, be_to_le_u32, le_to_be_u16},
+    utils::list::List,
+    utils::{bytes_to_struct, cksum16, to_u8_slice},
 };
 use std::{
     convert::TryInto,
@@ -244,7 +246,7 @@ pub fn output(
 
     if src != IP_ADDR_ANY && src != route.interface.unicast {
         warn!(
-            "Source address: {:?} not matching with interface unicast: {:?}",
+            "IP: source address: {:?} not matching with interface unicast: {:?}",
             ip_addr_to_str(src),
             ip_addr_to_str(route.interface.unicast)
         );
@@ -266,7 +268,7 @@ pub fn output(
 
     let header_dst = header.dst;
     trace!(
-        "IP output: header destination = {:?} src = {:?} nexthop = {:?}",
+        "IP: output header destination = {:?} src = {:?} nexthop = {:?}",
         ip_addr_to_str(header_dst),
         ip_addr_to_str(header.src),
         ip_addr_to_str(next_hop)
@@ -290,7 +292,7 @@ pub fn output(
             );
             if let Ok(result) = arp {
                 if result.is_none() {
-                    info!("ARP: waiting for ARP reply...");
+                    info!("IP: waiting for ARP reply...");
                     return Ok(());
                 }
                 hw_addr = result.unwrap();
@@ -304,25 +306,25 @@ pub fn output(
 fn check_ip_header(header: &IPHeader, data_len: usize, header_len: usize) -> Result<(), ()> {
     let ip_version = header.ver_len >> 4;
     if ip_version != IP_VERSION_4 {
-        error!("IP input: version error with value: {ip_version}");
+        error!("IP: version error with value: {ip_version}");
         return Err(());
     }
     if data_len < header_len {
-        error!("IP input: header length error.");
+        error!("IP: header length error.");
         return Err(());
     }
     if data_len < be_to_le_u16(header.total_len) as usize {
-        error!("IP input: total length error.");
+        error!("IP: total length error.");
         return Err(());
     }
     let header_bytes = unsafe { to_u8_slice(header) };
     if cksum16(header_bytes, header_len, 0) != 0 {
-        error!("IP input: checksum error.");
+        error!("IP: checksum error.");
         return Err(());
     }
     let offset = be_to_le_u16(header.offset);
     if offset & 0x2000 > 0 || offset & 0x1fff > 0 {
-        error!("IP input: fragment is not supported.");
+        error!("IP: fragment is not supported.");
         return Err(());
     }
     Ok(())
@@ -336,7 +338,7 @@ pub fn input(
     pcbs: &mut ControlBlocks,
 ) -> Result<(), ()> {
     if len < IP_HEADER_MIN_SIZE {
-        panic!("IP input: data is too short.")
+        panic!("IP: data is too short.")
     }
     let header = unsafe { bytes_to_struct::<IPHeader>(data) };
     let header_len = ((header.ver_len & 0x0f) << 2) as usize;
@@ -344,7 +346,7 @@ pub fn input(
         return Err(());
     }
     trace!(
-        "IP input src: {:?} dst: {:?}",
+        "IP: input src: {:?} dst: {:?}",
         ip_addr_to_str(header.src),
         ip_addr_to_str(header.dst)
     );
@@ -446,7 +448,8 @@ mod test {
 
     use crate::{
         protocols::ip::ip_addr_to_bytes,
-        util::{cksum16, le_to_be_u16, to_u8_slice},
+        utils::byte::le_to_be_u16,
+        utils::{cksum16, to_u8_slice},
     };
 
     use super::{IPHeader, IPHeaderIdManager, IPProtocolType, IP_VERSION_4};

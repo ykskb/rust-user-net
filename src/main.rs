@@ -4,7 +4,7 @@ mod drivers;
 mod interrupt;
 mod net;
 mod protocols;
-mod util;
+mod utils;
 
 use crate::app::NetApp;
 use crate::devices::ethernet::IRQ_ETHERNET;
@@ -48,7 +48,7 @@ fn main() -> Result<(), Error> {
             }
             sig => {
                 if TERM_SIGNALS.contains(&sig) {
-                    info!("Terminating");
+                    info!("App: terminating...");
                     break;
                 }
                 app.handle_irq(sig);
@@ -61,6 +61,6 @@ fn main() -> Result<(), Error> {
     app.close_sockets();
     app_join.join().unwrap();
     tcp_join.join().unwrap();
-    info!("App: closed.");
+    info!("App: closed app/TCP retransmission thread.");
     Ok(())
 }

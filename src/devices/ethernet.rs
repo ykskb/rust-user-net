@@ -1,5 +1,3 @@
-use log::{debug, info, trace};
-
 use super::{
     NetDevice, NetDeviceType, DEVICE_FLAG_BROADCAST, DEVICE_FLAG_NEED_ARP, NET_DEVICE_ADDR_LEN,
 };
@@ -7,9 +5,10 @@ use crate::{
     drivers::{pcap, tap, DriverType},
     interrupt::{self, IRQEntry},
     protocols::ProtocolType,
-    util::{be_to_le_u16, bytes_to_struct},
-    util::{le_to_be_u16, to_u8_slice},
+    utils::byte::{be_to_le_u16, le_to_be_u16},
+    utils::{bytes_to_struct, to_u8_slice},
 };
+use log::{debug, trace};
 use std::{convert::TryInto, mem::size_of};
 
 pub const IRQ_ETHERNET: i32 = interrupt::INTR_IRQ_BASE + 2;
@@ -60,7 +59,7 @@ pub fn read_data(device: &mut NetDevice) -> Option<(ProtocolType, Vec<u8>, usize
 
     let hdr_len = size_of::<EthernetHeader>();
     if len < hdr_len {
-        panic!("data is smaller than eth header.")
+        panic!("Ethernet: data is smaller than eth header.")
     }
 
     let hdr = unsafe { bytes_to_struct::<EthernetHeader>(&buf) };
@@ -69,12 +68,12 @@ pub fn read_data(device: &mut NetDevice) -> Option<(ProtocolType, Vec<u8>, usize
     if device.address[..ETH_ADDR_LEN] != hdr.dst[..ETH_ADDR_LEN]
         && ETH_ADDR_BROADCAST != hdr.dst[..ETH_ADDR_LEN]
     {
-        debug!("Not my route.");
+        debug!("Ethernet: not my route.");
         return None;
     }
 
     trace!(
-        "Ethernet input: buffer = {:?} bytes data = {:02x?}",
+        "Ethernet: input buffer = {:?} bytes data = {:02x?}",
         len,
         &buf[..len]
     );
@@ -84,7 +83,7 @@ pub fn read_data(device: &mut NetDevice) -> Option<(ProtocolType, Vec<u8>, usize
     let data_len = len - hdr_len;
 
     trace!(
-        "Device addr: {:x?} Eth header destination: {:x?} Eth header source: {:x?} Eth type: {:x?}",
+        "Ethernet: device addr: {:x?} Eth header destination: {:x?} Eth header source: {:x?} Eth type: {:x?}",
         device.address,
         hdr.dst,
         hdr.src,
@@ -103,7 +102,7 @@ pub fn transmit(
 ) -> Result<(), ()> {
     let src_address: [u8; 6] = device.address[..ETH_ADDR_LEN]
         .try_into()
-        .expect("Device address size error.");
+        .expect("Ethernet: device address size error.");
 
     let hdr = EthernetHeader {
         dst,
@@ -126,7 +125,7 @@ pub fn transmit(
     let frame_len = hdr_len + data_len + pad_len;
 
     trace!(
-        "Transmit: frame length: {frame_len} (data: {len} + header: {hdr_len} + pad: {pad_len}) | bytes: {:02x?}",
+        "Ethernet: transmit frame length: {frame_len} (data: {len} + header: {hdr_len} + pad: {pad_len}) | bytes: {:02x?}",
         &frame[..frame_len]
     );
 

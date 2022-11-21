@@ -11,7 +11,7 @@ use crate::protocols::ip::{
     IPAdress, IPEndpoint, IPHeaderIdManager, IPInterface, IPRoute, IPRoutes,
 };
 use crate::protocols::{ControlBlocks, NetProtocol, NetProtocols, ProtocolContexts, ProtocolType};
-use crate::util::le_to_be_u32;
+use crate::utils::byte::le_to_be_u32;
 use clap::{Args, Parser, Subcommand};
 use log::{info, warn};
 use std::process;
@@ -228,7 +228,7 @@ impl NetApp {
                 }
             }
             if !request_sent {
-                info!("CLI: sending request");
+                info!("App: sending request");
                 let devices = &mut devices_arc.lock().unwrap();
                 let contexts = &mut contexts_arc.lock().unwrap();
                 let eth_device = devices.get_mut_by_type(NetDeviceType::Ethernet).unwrap();
@@ -247,7 +247,7 @@ impl NetApp {
                 );
                 request_sent = true;
             }
-            info!("CLI: starting TCP receive...");
+            info!("App: starting TCP receive...");
             let receive_res = tcp::receive(sock_opt.unwrap(), 2048, pcbs_arc.clone());
             if let Some(received) = receive_res {
                 log_data(&received[..]);
@@ -283,10 +283,10 @@ impl NetApp {
                 }
             }
             if sock_opt.is_none() {
-                info!("CLI: interrupted before establishing any connection.");
+                info!("App: interrupted before establishing any connection.");
                 return;
             }
-            info!("CLI: starting TCP receive...");
+            info!("App: starting TCP receive...");
             let receive_res = tcp::receive(sock_opt.unwrap(), 2048, pcbs_arc.clone());
             if let Some(received) = receive_res {
                 log_data(&received[..]);
@@ -342,7 +342,7 @@ impl NetApp {
                 udp::send_to(soc_opt.unwrap(), req, remote, eth_device, contexts, pcbs);
                 sent_count += 1;
             } else {
-                info!("CLI: starting UDP receive...");
+                info!("App: starting UDP receive...");
                 let receive_res = udp::receive_from(soc_opt.unwrap(), pcbs_arc.clone());
                 if let Some(entry) = receive_res {
                     log_data(&entry.data[..]);
@@ -374,7 +374,7 @@ impl NetApp {
                     Some(soc)
                 }
             }
-            info!("CLI: starting UDP receive...");
+            info!("App: starting UDP receive...");
             let receive_res = udp::receive_from(soc_opt.unwrap(), pcbs_arc.clone());
             if let Some(entry) = receive_res {
                 log_data(&entry.data[..]);
@@ -386,9 +386,9 @@ impl NetApp {
 fn log_data(data: &[u8]) {
     let received_utf8 = str::from_utf8(data);
     if let Ok(utf8_str) = received_utf8 {
-        info!("CLI: data received = {:?}", utf8_str);
+        info!("App: data received = {:?}", utf8_str);
     } else {
-        warn!("CLI: UTF8 error. Data is {:02x?}", data);
+        warn!("App: UTF8 error. Data is {:02x?}", data);
     }
 }
 // TEST: ICMP output

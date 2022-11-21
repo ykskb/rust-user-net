@@ -6,7 +6,7 @@ Talks Ethernet / ARP / IP / ICMP / UDP / TCP through TAP device on Linux.
 
 <img src="./docs/images/google-example.gif" width="600px" />
 
-This project is largely based on [microps](https://github.com/pandax381/microps) project. Many thanks to [the owner](https://github.com/pandax381) for awesome codes and shared [decks](https://drive.google.com/drive/folders/1k2vymbC3vUk5CTJbay4LLEdZ9HemIpZe?usp=share_link) (Japanese).
+This project is by and large a Rust port of [microps](https://github.com/pandax381/microps) project written in C. Many thanks to [its owner](https://github.com/pandax381) for awesome codes and shared [decks](https://drive.google.com/drive/folders/1k2vymbC3vUk5CTJbay4LLEdZ9HemIpZe?usp=share_link) (Japanese).
 
 ### High level view
 
@@ -36,24 +36,24 @@ cd rust-user-net
 ```sh
 # TCP
 
-# Send command:
+# Test send command:
 # nc listens for TCP active open (3-way handshake) from rust-user-net
 nc -nv -l 10007
 rust-user-net tcp send 192.0.2.1 10007 "TCP TEST DATA"
 
-# Receive command:
+# Test receive command:
 # nc connects and sends data to rust-user-net (192.0.2.2:7) 
 rust-user-net tcp receive 0.0.0.0 7
 nc -nv 192.0.2.2 7 # -n: no name resolution
 
 # UDP
 
-# Send command:
-# Listen for UDP data from rust-user-net
+# Test send command:
+# nc listens for UDP data from rust-user-net
 nc -u -l 10007
 rust-user-net udp send 192.0.2.1 10007 "UDP TEST DATA"
 
-# Receive command:
+# Test receive command:
 # nc sends UDP data to rust-user-net (192.0.2.2:7)
 rust-user-net udp receive 0.0.0.0 7
 nc -u 192.0.2.2 7 # -u: UDP mode

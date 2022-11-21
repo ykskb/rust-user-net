@@ -7,7 +7,7 @@ use self::{
 };
 use crate::{
     devices::{NetDevice, NetDevices},
-    util::List,
+    utils::list::List,
 };
 use log::{info, trace};
 use std::{collections::VecDeque, sync::Arc};
@@ -91,13 +91,14 @@ impl NetProtocol {
         pcbs: &mut ControlBlocks,
     ) {
         // let parsed = u32::from_be_bytes(data.as_slice());
+        info!("Protocol: ----Start of Input----");
         match self.protocol_type {
             ProtocolType::Arp => {
-                trace!("Handling protocol: ARP | Received: {:02x?}", data);
+                trace!("Protocol: ARP | Received: {:02x?}", data);
                 arp::input(data, len, device, contexts).unwrap();
             }
             ProtocolType::IP => {
-                trace!("Handling protocol: IP | Received: {:02x?}", data);
+                trace!("Protocol: IP | Received: {:02x?}", data);
                 ip::input(data, len, device, contexts, pcbs).unwrap();
             }
             ProtocolType::Unknown => {

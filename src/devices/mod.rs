@@ -6,9 +6,9 @@ use crate::{
     interrupt,
     net::NetInterfaceFamily,
     protocols::{ip::IPInterface, NetProtocols, ProtocolData, ProtocolType},
-    util::List,
+    utils::list::List,
 };
-use log::{debug, error, info, trace, warn};
+use log::{debug, info};
 use signal_hook::{consts::SIGUSR1, low_level::raise};
 use std::sync::Arc;
 
@@ -77,7 +77,7 @@ impl NetDevice {
 
     pub fn register_interface(&mut self, interface: Arc<IPInterface>) {
         info!(
-            "Registering {:?} interface on device: {}\n",
+            "Device: registering {:?} interface on device: {}\n",
             interface.interface.family, self.name
         );
         // TODO: check duplicate inteface family type (IP or IPv6)
@@ -121,7 +121,7 @@ impl NetDevice {
         dst: [u8; ETH_ADDR_LEN],
     ) -> Result<(), ()> {
         if !self.is_open() {
-            panic!("Device is not open.")
+            panic!("Device: device is not open.")
         }
         match self.device_type {
             NetDeviceType::Loopback => loopback::transmit(self, data),
@@ -137,7 +137,7 @@ impl NetDevice {
         };
 
         if incoming_data.is_none() {
-            debug!("ISR called but no data__________\n");
+            debug!("Device: ISR called but no data.");
             return;
         }
 
@@ -151,7 +151,7 @@ impl NetDevice {
         }
 
         debug!(
-            "ISR done: received protocol type: {:x?}__________\n",
+            "Device: ISR done: received protocol type: {:x?}",
             proto_type
         );
         raise(SIGUSR1).unwrap();

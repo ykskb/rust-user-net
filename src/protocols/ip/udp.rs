@@ -2,7 +2,8 @@ use super::{ControlBlocks, ProtocolContexts};
 use super::{IPAdress, IPEndpoint, IPInterface, IPProtocolType, IP_ADDR_ANY, IP_PAYLOAD_MAX_SIZE};
 use crate::{
     devices::NetDevice,
-    util::{be_to_le_u16, bytes_to_struct, cksum16, le_to_be_u16, to_u8_slice},
+    utils::byte::{be_to_le_u16, le_to_be_u16},
+    utils::{bytes_to_struct, cksum16, to_u8_slice},
 };
 use log::{debug, error, info, trace, warn};
 use std::{
@@ -344,7 +345,7 @@ pub fn receive_from(pcb_id: usize, pcbs_arc: Arc<Mutex<ControlBlocks>>) -> Optio
         let pcb = pcbs
             .udp_pcbs
             .get_mut_by_id(pcb_id)
-            .expect("UDP(receive_from): no specified PCB entry.");
+            .expect("UDP: no specified PCB entry for receive.");
 
         pcb.sender = Some(sender);
     }
